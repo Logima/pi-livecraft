@@ -8,12 +8,14 @@ import {
   sendPiCommand,
 } from '../../api.ts'
 import type { JsonObject, RecentSession, SessionSummary } from '../../../shared/types.ts'
+import { isObject } from '../../../shared/is-object.ts'
 import { promptSessionTitle } from '../composer/prompt-title.ts'
 import { recentWorkspaces } from './recent-workspaces.ts'
 import {
   nextActiveSessionId,
   pickSessionOnOpen,
   sidebarSessions,
+  type PinnedSession,
   type SessionActionTarget,
 } from './sidebar-sessions.ts'
 
@@ -28,9 +30,11 @@ interface WorkspaceSessionsOptions {
 interface StartSessionOptions {
   draftMessage?: string
   initialMessage?: string
+  refreshCwd?: string
 }
 
 const COMPLETED_SESSIONS_KEY = 'pi-livecraft.completed-sessions'
+const PINNED_SESSIONS_KEY = 'pi-livecraft.pinned-sessions'
 const MAX_COMPLETED_SESSIONS = 30
 
 /** Owns workspace selection, session lists, persistence, and session creation. */
@@ -44,6 +48,7 @@ export function useWorkspaceSessions(
   const [completedSessionIds, setCompletedSessionIds] = useState<ReadonlySet<string>>(
     readCompletedSessionIds,
   )
+  const [pinnedSessions, setPinnedSessions] = useState<PinnedSession[]>(readPinnedSessions)
   const [isRefreshingSessions, setIsRefreshingSessions] = useState(true)
   const [workspacePath, setWorkspacePath] = useState(() =>
     window.localStorage.getItem('pi-livecraft.workspace-path') ?? '.'
@@ -102,6 +107,7 @@ export function useWorkspaceSessions(
   }, [selectedId])
 
   useEffect(() => writeCompletedSessionIds(completedSessionIds), [completedSessionIds])
+  useEffect(() => writePinnedSessions(pinnedSessions), [pinnedSessions])
 
   /** Reloads sessions while discarding responses superseded by a newer workspace refresh. */
   const refreshSessions = useCallback(async (cwd = workspacePath) => {
@@ -190,6 +196,18 @@ export function useWorkspaceSessions(
     void refreshSessions(path)
   }, [onWorkspaceSelected, recentWorkspacePaths, refreshSessions])
 
+  const updatePinnedSessionName = useCallback((sessionPath: string, name: string): void => {
+    setPinnedSessions((current) => {
+      let changed = false
+      const next = current.map((session) => {
+        if (session.sessionPath !== sessionPath || session.name === name) return session
+        changed = true
+        return { ...session, name }
+      })
+      return changed ? next : current
+    })
+  }, [])
+
   /** Stores the optimistic title shared by first prompts in new and existing sessions. */
   const nameSessionFromFirstPrompt = useCallback(
     (session: SessionSummary, message: string): void => {
@@ -199,6 +217,7 @@ export function useWorkspaceSessions(
       )
       const sessionPath = session.sessionPath
       if (!sessionPath) return
+      updatePinnedSessionName(sessionPath, name)
       setSentSessions((current) => [
         {
           id: session.id,
@@ -212,7 +231,7 @@ export function useWorkspaceSessions(
         ),
       ])
     },
-    [],
+    [updatePinnedSessionName],
   )
 
   /** Launches and selects a session, then sends or prepares its optional first prompt.
@@ -227,13 +246,13 @@ export function useWorkspaceSessions(
       setSelectedId('')
       try {
         const session = await start()
-        await refreshSessions()
+        await refreshSessions(options.refreshCwd)
         setSelectedId(session.id)
         if (options.draftMessage) onDraftMessage(session.id, options.draftMessage)
         if (options.initialMessage) {
           await sendPiCommand(session.id, { type: 'prompt', message: options.initialMessage })
           nameSessionFromFirstPrompt(session, options.initialMessage)
-          await refreshSessions()
+          await refreshSessions(options.refreshCwd)
           onInitialMessageSent()
         }
         return session
@@ -260,6 +279,17 @@ export function useWorkspaceSessions(
     [],
   )
 
+  const togglePinnedSession = useCallback((target: SessionActionTarget): void => {
+    const sessionPath = target.sessionPath
+    if (!sessionPath) return
+    setPinnedSessions((current) => {
+      if (current.some((session) => session.sessionPath === sessionPath)) {
+        return current.filter((session) => session.sessionPath !== sessionPath)
+      }
+      return [...current, { cwd: target.cwd, name: target.name, sessionPath }]
+    })
+  }, [])
+
   /** Applies a manager-provided name consistently across live and recent session lists. */
   const renameSession = useCallback((sessionId: string, name: string): void => {
     const sessionPath = sessionsRef.current.find((session) => session.id === sessionId)?.sessionPath
@@ -267,6 +297,7 @@ export function useWorkspaceSessions(
       current.map((session) => session.id === sessionId ? { ...session, name } : session)
     )
     if (!sessionPath) return
+    updatePinnedSessionName(sessionPath, name)
     setRecentSessions((current) =>
       current.map((session) => session.sessionPath === sessionPath ? { ...session, name } : session)
     )
@@ -277,7 +308,7 @@ export function useWorkspaceSessions(
           : session
       )
     )
-  }, [])
+  }, [updatePinnedSessionName])
 
   /** Renames an active session through Pi, or a history-only session through a disposable RPC. */
   const renameManagedSession = useCallback(
@@ -289,12 +320,13 @@ export function useWorkspaceSessions(
         renameSession(target.sessionId, normalized)
       } else if (target.sessionPath) {
         await renameStoredSession(target.cwd, target.sessionPath, normalized)
+        updatePinnedSessionName(target.sessionPath, normalized)
       } else {
         throw new Error('Session path is unavailable')
       }
       await refreshSessions()
     },
-    [refreshSessions, renameSession],
+    [refreshSessions, renameSession, updatePinnedSessionName],
   )
 
   /** Stops a managed process, keeps its persisted history, and selects a nearby active session. */
@@ -373,12 +405,14 @@ export function useWorkspaceSessions(
     isRefreshingSessions,
     markSessionCompleted,
     nameSessionFromFirstPrompt,
+    pinnedSessions,
     recentSessions,
     recentWorkspacePaths,
     refreshSessions,
     removePendingRequest,
     renameManagedSession,
     renameSession,
+    togglePinnedSession,
     selectCreatedSession,
     selectedId,
     sentSessions,
@@ -403,6 +437,44 @@ function readRecentWorkspaces(): string[] {
       : []
   } catch {
     return []
+  }
+}
+
+/** Restores pinned session metadata persisted across app restarts. */
+function readPinnedSessions(): PinnedSession[] {
+  try {
+    const stored = window.localStorage.getItem(PINNED_SESSIONS_KEY)
+    if (!stored) return []
+    const parsed: unknown = JSON.parse(stored)
+    if (!Array.isArray(parsed)) return []
+    const sessions: PinnedSession[] = []
+    const seenPaths = new Set<string>()
+    for (const value of parsed) {
+      if (
+        !isObject(value)
+        || typeof value.cwd !== 'string'
+        || typeof value.name !== 'string'
+        || typeof value.sessionPath !== 'string'
+        || value.cwd.length === 0
+        || value.name.trim().length === 0
+        || value.sessionPath.length === 0
+        || seenPaths.has(value.sessionPath)
+      ) continue
+      seenPaths.add(value.sessionPath)
+      sessions.push({ cwd: value.cwd, name: value.name, sessionPath: value.sessionPath })
+    }
+    return sessions
+  } catch {
+    return []
+  }
+}
+
+/** Persists pinned session metadata so pins survive page and app restarts. */
+function writePinnedSessions(sessions: readonly PinnedSession[]): void {
+  try {
+    window.localStorage.setItem(PINNED_SESSIONS_KEY, JSON.stringify(sessions))
+  } catch {
+    // localStorage may be unavailable
   }
 }
 

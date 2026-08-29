@@ -391,6 +391,12 @@
   flex: 1;
   min-width: 0;
 }
+.session-item > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
 .session-item strong, .session-item small {
   display: block;
   overflow: hidden;

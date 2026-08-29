@@ -50,7 +50,7 @@ import {
 import { RightSidebar } from './features/right-sidebar/RightSidebar.tsx'
 import { quotaProviderForModel } from './features/quotas/quota-display.ts'
 import { DirectoryPicker } from './features/workspace/DirectoryPicker.tsx'
-import { sidebarSessions } from './features/workspace/sidebar-sessions.ts'
+import { sidebarSessions, type PinnedSession } from './features/workspace/sidebar-sessions.ts'
 import { useWorkspaceSessions } from './features/workspace/useWorkspaceSessions.ts'
 import { WorkspaceSidebar } from './features/workspace/WorkspaceSidebar.tsx'
 import {
@@ -322,6 +322,7 @@ function App() {
     isRefreshingSessions,
     markSessionCompleted,
     nameSessionFromFirstPrompt,
+    pinnedSessions,
     recentSessions,
     recentWorkspacePaths,
     refreshSessions,
@@ -336,6 +337,7 @@ function App() {
     setSelectedId,
     selectWorkspace,
     startAndSelectSession: startWorkspaceSession,
+    togglePinnedSession,
     updateSession,
     workspacePath,
   } = useWorkspaceSessions({
@@ -355,6 +357,17 @@ function App() {
     ): Promise<SessionSummary | null> =>
       startWorkspaceSession(start, { draftMessage, initialMessage }),
     [startWorkspaceSession],
+  )
+
+  const openPinnedSession = useCallback(
+    async (session: PinnedSession): Promise<void> => {
+      selectWorkspace(session.cwd)
+      await startWorkspaceSession(
+        () => openSession(session.cwd, session.sessionPath),
+        { refreshCwd: session.cwd },
+      )
+    },
+    [selectWorkspace, startWorkspaceSession],
   )
 
   const {
@@ -1112,6 +1125,7 @@ function App() {
         compactingSessionIds={compactingSessionIds}
         completedSessionIds={completedSessionIds}
         isRefreshing={isRefreshingSessions}
+        pinnedSessions={pinnedSessions}
         recentSessions={recentSessions}
         sentSessions={sentSessions}
         sessions={sessions}
@@ -1126,11 +1140,13 @@ function App() {
         onOpenSession={async (recentSession) => {
           await startAndSelectSession(() => openSession(workspacePath, recentSession.sessionPath))
         }}
+        onOpenOtherWorkspaceSession={openPinnedSession}
         onSelectOtherWorkspaceSession={(session) => selectWorkspace(session.cwd, session.id)}
         onSelectSession={setSelectedId}
         onError={(cause) => showToast('error', messageOf(cause))}
         onOpenSettings={() => setSettingsOpen(true)}
         onRenameSession={renameManagedSession}
+        onTogglePinnedSession={togglePinnedSession}
         onResize={updateWorkspaceSidebarWidth}
         onToggleCollapsed={toggleWorkspaceSidebar}
       />

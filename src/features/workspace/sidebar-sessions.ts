@@ -8,6 +8,8 @@ export interface SessionActionTarget {
   sessionPath?: string
 }
 
+export type PinnedSession = Pick<RecentSession, 'cwd' | 'name' | 'sessionPath'>
+
 /** Adds pending sessions and orders the visible list by latest activity. */
 export function sidebarSessions(
   recentSessions: RecentSession[],
@@ -52,21 +54,36 @@ export function otherWorkspaceSessions(
   workspacePath: string,
   compactingSessionIds: ReadonlySet<string>,
   completedSessionIds: ReadonlySet<string>,
+  pinnedSessionPaths: ReadonlySet<string> = new Set(),
 ): SessionSummary[] {
-  const relevant = sessions.filter((session) =>
-    session.cwd !== workspacePath
-    && session.status !== 'exited'
-    && sessionIndicator(session, '', compactingSessionIds, completedSessionIds) !== null
-    && sessionIndicator(session, '', compactingSessionIds, completedSessionIds) !== 'idle'
-  )
+  const relevant = sessions.flatMap((session) => {
+    if (session.cwd === workspacePath || session.status === 'exited') return []
+    const indicator = sessionIndicator(session, '', compactingSessionIds, completedSessionIds)
+    const pinned = session.sessionPath !== undefined && pinnedSessionPaths.has(session.sessionPath)
+    return pinned || (indicator !== null && indicator !== 'idle') ? [{ session, indicator }] : []
+  })
   return [
-    ...relevant.filter((session) =>
-      sessionIndicator(session, '', compactingSessionIds, completedSessionIds) !== 'complete'
-    ),
-    ...relevant.filter((session) =>
-      sessionIndicator(session, '', compactingSessionIds, completedSessionIds) === 'complete'
-    ),
+    ...relevant.filter(({ indicator }) => indicator !== 'idle' && indicator !== 'complete'),
+    ...relevant.filter(({ indicator }) => indicator === 'idle'),
+    ...relevant.filter(({ indicator }) => indicator === 'complete'),
   ]
+    .map(({ session }) => session)
+}
+
+/** Lists pinned session files outside the current workspace without active manager duplicates. */
+export function otherWorkspacePinnedSessions(
+  pinnedSessions: readonly PinnedSession[],
+  sessions: SessionSummary[],
+  workspacePath: string,
+): PinnedSession[] {
+  const activePaths = new Set(
+    sessions.flatMap((session) =>
+      session.status !== 'exited' && session.sessionPath ? [session.sessionPath] : []
+    ),
+  )
+  return pinnedSessions.filter((session) =>
+    session.cwd !== workspacePath && !activePaths.has(session.sessionPath)
+  )
 }
 
 /**

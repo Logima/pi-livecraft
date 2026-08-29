@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { RecentSession, SessionSummary } from '../shared/types.ts'
 import {
+  otherWorkspacePinnedSessions,
   otherWorkspaceSessions,
   pickSessionOnOpen,
   sidebarSessions,
@@ -98,6 +99,50 @@ test('hides current, idle viewed, and exited sessions from other workspaces', ()
   assert.deepEqual(
     otherWorkspaceSessions([current, idle, exited], '/workspace', new Set(), new Set()),
     [],
+  )
+})
+
+test('shows a pinned idle session after active work in another workspace', () => {
+  const pinned = {
+    ...remoteSession,
+    id: 'pinned',
+    sessionPath: '/sessions/pinned.jsonl',
+    status: 'idle' as const,
+  }
+
+  assert.deepEqual(
+    otherWorkspaceSessions(
+      [pinned, remoteSession],
+      '/workspace',
+      new Set(),
+      new Set(),
+      new Set([pinned.sessionPath]),
+    ),
+    [remoteSession, pinned],
+  )
+})
+
+test('keeps pinned history out of the active list and current workspace', () => {
+  const active = {
+    ...remoteSession,
+    id: 'active',
+    sessionPath: '/sessions/active.jsonl',
+    status: 'idle' as const,
+  }
+  const historical = {
+    cwd: '/remote',
+    name: 'Historical session',
+    sessionPath: '/sessions/historical.jsonl',
+  }
+  const current = {
+    cwd: '/workspace',
+    name: 'Current session',
+    sessionPath: '/sessions/current.jsonl',
+  }
+
+  assert.deepEqual(
+    otherWorkspacePinnedSessions([active, historical, current], [active], '/workspace'),
+    [historical],
   )
 })
 

@@ -13,8 +13,10 @@ import type { RecentSession, SessionSummary } from '../../../shared/types.ts'
 import { sessionIndicator } from './session-indicator.ts'
 import { SessionStatusIndicator } from './SessionStatusIndicator.tsx'
 import {
+  otherWorkspacePinnedSessions,
   otherWorkspaceSessions,
   sidebarSessions,
+  type PinnedSession,
   type SessionActionTarget,
 } from './sidebar-sessions.ts'
 import { SessionRenameDialog } from './SessionRenameDialog.tsx'
@@ -31,6 +33,7 @@ interface WorkspaceSidebarProps {
   compactingSessionIds: ReadonlySet<string>
   completedSessionIds: ReadonlySet<string>
   isRefreshing: boolean
+  pinnedSessions: readonly PinnedSession[]
   recentSessions: RecentSession[]
   sentSessions: RecentSession[]
   sessions: SessionSummary[]
@@ -41,10 +44,12 @@ interface WorkspaceSidebarProps {
   onCloseSession: (sessionId: string) => Promise<void>
   onCreate: () => Promise<void>
   onOpenSession: (session: RecentSession) => Promise<void>
+  onOpenOtherWorkspaceSession: (session: PinnedSession) => Promise<void>
   onSelectOtherWorkspaceSession: (session: SessionSummary) => void
   onSelectSession: (sessionId: string) => void
   onOpenSettings: () => void
   onRenameSession: (target: SessionActionTarget, name: string) => Promise<void>
+  onTogglePinnedSession: (target: SessionActionTarget) => void
   onResize: (width: number) => void
   onToggleCollapsed: () => void
   onError: (cause: unknown) => void
@@ -56,6 +61,7 @@ export function WorkspaceSidebar({
   compactingSessionIds,
   completedSessionIds,
   isRefreshing,
+  pinnedSessions,
   recentSessions,
   sentSessions,
   sessions,
@@ -66,10 +72,12 @@ export function WorkspaceSidebar({
   onCloseSession,
   onCreate,
   onOpenSession,
+  onOpenOtherWorkspaceSession,
   onSelectOtherWorkspaceSession,
   onSelectSession,
   onOpenSettings,
   onRenameSession,
+  onTogglePinnedSession,
   onResize,
   onToggleCollapsed,
   onError,
@@ -81,14 +89,28 @@ export function WorkspaceSidebar({
   const selectedSessionRef = useRef<HTMLButtonElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const pinnedSessionPaths = useMemo(
+    () => new Set(pinnedSessions.map((session) => session.sessionPath)),
+    [pinnedSessions],
+  )
   const visibleSessions = useMemo(
     () => sidebarSessions(recentSessions, workspacePath, sentSessions),
     [recentSessions, sentSessions, workspacePath],
   )
   const otherSessions = useMemo(
     () =>
-      otherWorkspaceSessions(sessions, workspacePath, compactingSessionIds, completedSessionIds),
-    [compactingSessionIds, completedSessionIds, sessions, workspacePath],
+      otherWorkspaceSessions(
+        sessions,
+        workspacePath,
+        compactingSessionIds,
+        completedSessionIds,
+        pinnedSessionPaths,
+      ),
+    [compactingSessionIds, completedSessionIds, pinnedSessionPaths, sessions, workspacePath],
+  )
+  const otherPinnedSessions = useMemo(
+    () => otherWorkspacePinnedSessions(pinnedSessions, sessions, workspacePath),
+    [pinnedSessions, sessions, workspacePath],
   )
 
   useEffect(() => {
@@ -167,6 +189,13 @@ export function WorkspaceSidebar({
     contextMenuTriggerRef.current?.focus()
   }
 
+  function togglePin(): void {
+    const target = contextMenu?.target
+    if (!target?.sessionPath) return
+    dismissContextMenu()
+    onTogglePinnedSession(target)
+  }
+
   async function closeTarget(): Promise<void> {
     const sessionId = contextMenu?.target.sessionId
     dismissContextMenu()
@@ -176,6 +205,13 @@ export function WorkspaceSidebar({
     } catch (cause) {
       onError(cause)
     }
+  }
+
+  function openPinnedSession(session: PinnedSession): void {
+    setOpeningSessionPath(session.sessionPath)
+    void onOpenOtherWorkspaceSession(session).catch(onError).finally(() =>
+      setOpeningSessionPath((current) => current === session.sessionPath ? '' : current)
+    )
   }
 
   function startResize(event: ReactPointerEvent<HTMLDivElement>): void {
@@ -214,6 +250,10 @@ export function WorkspaceSidebar({
       onResize(maxWorkspaceSidebarWidth)
     }
   }
+
+  const contextMenuSessionPath = contextMenu?.target.sessionPath
+  const contextMenuIsPinned = contextMenuSessionPath !== undefined
+    && pinnedSessionPaths.has(contextMenuSessionPath)
 
   return (
     <aside
@@ -305,6 +345,7 @@ export function WorkspaceSidebar({
             compactingSessionIds,
             completedSessionIds,
           )
+          const isPinned = pinnedSessionPaths.has(recentSession.sessionPath)
           const sessionLabel = openingSessionPath === recentSession.sessionPath
             ? 'Opening…'
             : recentSession.name
@@ -317,7 +358,7 @@ export function WorkspaceSidebar({
           return (
             <Tooltip
               key={recentSession.sessionPath}
-              hint='Right-click to rename or close the session'
+              hint='Right-click to pin, rename, or close the session'
               label={`${recentSession.name}\n${
                 new Date(recentSession.updatedAt).toLocaleString('en-US')
               }`}
@@ -325,7 +366,7 @@ export function WorkspaceSidebar({
               <button
                 className={`session-item${activeSession?.id === selectedId ? ' selected' : ''}${
                   indicator ? ` ${indicator}` : ''
-                }`}
+                }${isPinned ? ' pinned' : ''}`}
                 aria-haspopup='menu'
                 disabled={openingSessionPath === recentSession.sessionPath}
                 onContextMenu={(event) => openContextMenu(actionTarget, event)}
@@ -344,6 +385,7 @@ export function WorkspaceSidebar({
                 type='button'
               >
                 {indicator && <SessionStatusIndicator status={indicator} />}
+                {isPinned && <PinIcon />}
                 <span>
                   <strong>{sessionLabel}</strong>
                 </span>
@@ -355,11 +397,11 @@ export function WorkspaceSidebar({
           <p className='empty-sidebar'>No Pi sessions in this directory.</p>
         )}
       </nav>
-      {otherSessions.length > 0 && (
+      {(otherSessions.length > 0 || otherPinnedSessions.length > 0) && (
         <section className='other-workspace-sessions'>
           <h2>Other workspaces</h2>
           <nav
-            aria-label='Active and completed sessions in other workspaces'
+            aria-label='Pinned, active and completed sessions in other workspaces'
             className='other-session-list'
           >
             {otherSessions.map((session) => {
@@ -369,6 +411,8 @@ export function WorkspaceSidebar({
                 compactingSessionIds,
                 completedSessionIds,
               )
+              const isPinned = session.sessionPath !== undefined
+                && pinnedSessionPaths.has(session.sessionPath)
               const actionTarget: SessionActionTarget = {
                 cwd: session.cwd,
                 name: session.name,
@@ -377,20 +421,56 @@ export function WorkspaceSidebar({
               }
               return (
                 <Tooltip
-                  hint='Right-click to rename or close the session'
+                  hint='Right-click to pin, rename, or close the session'
                   key={session.id}
                   label={`${session.name}\n${session.cwd}`}
                 >
                   <button
                     aria-haspopup='menu'
-                    aria-label={`${session.name} in workspace ${session.cwd}`}
-                    className={`session-item${indicator ? ` ${indicator}` : ''}`}
+                    aria-label={`${session.name} in workspace ${session.cwd}${
+                      isPinned ? ', pinned' : ''
+                    }`}
+                    className={`session-item${indicator ? ` ${indicator}` : ''}${
+                      isPinned ? ' pinned' : ''
+                    }`}
                     onContextMenu={(event) => openContextMenu(actionTarget, event)}
                     onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
                     onClick={() => onSelectOtherWorkspaceSession(session)}
                     type='button'
                   >
                     {indicator && <SessionStatusIndicator status={indicator} />}
+                    {isPinned && <PinIcon />}
+                    <span>
+                      <strong>{session.name}</strong>
+                      <small>{session.cwd}</small>
+                    </span>
+                  </button>
+                </Tooltip>
+              )
+            })}
+            {otherPinnedSessions.map((session) => {
+              const actionTarget: SessionActionTarget = {
+                cwd: session.cwd,
+                name: session.name,
+                sessionPath: session.sessionPath,
+              }
+              return (
+                <Tooltip
+                  hint='Right-click to unpin, rename, or close the session'
+                  key={session.sessionPath}
+                  label={`${session.name}\n${session.cwd}`}
+                >
+                  <button
+                    aria-haspopup='menu'
+                    aria-label={`${session.name} in workspace ${session.cwd}, pinned`}
+                    className='session-item pinned'
+                    disabled={openingSessionPath === session.sessionPath}
+                    onContextMenu={(event) => openContextMenu(actionTarget, event)}
+                    onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
+                    onClick={() => openPinnedSession(session)}
+                    type='button'
+                  >
+                    <PinIcon />
                     <span>
                       <strong>{session.name}</strong>
                       <small>{session.cwd}</small>
@@ -410,7 +490,17 @@ export function WorkspaceSidebar({
           role='menu'
           style={{ left: contextMenuPosition.left, top: contextMenuPosition.top }}
         >
-          <button autoFocus onClick={startRename} role='menuitem' type='button'>
+          {contextMenuSessionPath && (
+            <button autoFocus onClick={togglePin} role='menuitem' type='button'>
+              {contextMenuIsPinned ? 'Unpin session' : 'Pin session'}
+            </button>
+          )}
+          <button
+            autoFocus={!contextMenuSessionPath}
+            onClick={startRename}
+            role='menuitem'
+            type='button'
+          >
             Rename…
           </button>
           {contextMenu.target.sessionId && (
@@ -517,6 +607,27 @@ function ChevronIcon() {
       width='14'
     >
       <path d='m9 6 6 6-6 6' />
+    </svg>
+  )
+}
+
+function PinIcon() {
+  return (
+    <svg
+      aria-hidden='true'
+      fill='none'
+      height='14'
+      stroke='currentColor'
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      viewBox='0 0 24 24'
+      width='14'
+    >
+      <path d='m9 3 6 6' />
+      <path d='m5 8 11 11' />
+      <path d='m14 4 6 6-4 1-4 4-1 4-6-6 4-1 4-4 1-4Z' />
+      <path d='m12 16-5 5' />
     </svg>
   )
 }
