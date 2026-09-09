@@ -1,8 +1,14 @@
 .ask-user-question, .composer {
-  width: min(900px, calc(100% - 48px));
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+
+.composer {
+  width: min(1000px, calc(100% - 48px));
+}
+.ask-user-question {
+  width: min(900px, calc(100% - 48px));
 }
 
 /* Overlay backdrop */

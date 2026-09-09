@@ -4,7 +4,7 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: clip;
-  padding: 42px max(28px, calc((100% - 900px) / 2)) 30px;
+  padding: 42px max(28px, calc((100% - 1000px) / 2)) 30px;
   scrollbar-gutter: stable;
 }
 .conversation-content {
