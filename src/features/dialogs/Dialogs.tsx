@@ -148,7 +148,7 @@ export function AskUserQuestionDialog(
                 {sessionName ? `Question from session “${sessionName}”` : 'Pi needs your input'}
               </span>
               <strong id='ask-user-question-title'>
-                Question {activeQuestion + 1} sur {request.questions.length}
+                Question {activeQuestion + 1} of {request.questions.length}
               </strong>
             </div>
             <div className='ask-user-question-heading-actions'>

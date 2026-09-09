@@ -77,6 +77,8 @@ export interface SessionAnalysis {
   totalToolCalls: number
   failedToolCalls: number
   contextPercent?: number
+  contextTokens?: number
+  contextWindow?: number
   tokens: MessageUsage
   tokensAvailable: boolean
 }
@@ -236,6 +238,8 @@ export function analyzeSession(
     totalToolCalls,
     failedToolCalls: toolCalls.filter((call) => call.isError).length,
     contextPercent: finiteNumber(stats?.contextUsage?.percent),
+    contextTokens: finiteNumber(stats?.contextUsage?.tokens),
+    contextWindow: finiteNumber(stats?.contextUsage?.contextWindow),
     tokens,
     tokensAvailable: statsTokens !== null || attributionAvailable,
   }
@@ -381,17 +385,17 @@ export function buildSessionAnalysisPrompt(analysis: SessionAnalysis): string {
     },
   }
   return [
-    'Analyse uniquement le snapshot JSON ci-dessous. Concentre-toi sur les turns et les tools, sans paraphraser tous les KPI.',
-    'Réponds en français, en 120 mots maximum, avec exactement cette structure Markdown :',
-    '**Bilan** — une phrase qui qualifie la session sans jugement vague.',
-    '- **Turns clés** — cite un à trois turns par numéro, classés d’abord par coût ; donne leur coût et leur part du coût visible, puis les métriques qui les distinguent.',
-    '- **Outils** — relève les tools fréquents, en échec, volumineux ou lents et rattache-les à leur turn lorsqu’il est connu.',
-    '- **Cache & contexte** — explique seulement le signal global ou propre aux turns clés.',
-    '**Priorité** — une seule action concrète fondée sur le signal le plus important, ou « Aucune action prioritaire ».',
-    'Un turn est clé ici par son coût absolu et sa part du coût des turns visibles. Les tools associés servent à le caractériser, jamais à leur attribuer ce coût.',
-    'Appuie chaque constat sur une ou deux valeurs. Si un axe est sain, dis-le ; si les données manquent ou sont partielles, nuance-le brièvement.',
-    'cacheReadPercentOfInput mesure la part des tokens d’entrée relus depuis le cache : une valeur élevée est généralement positive. Les longueurs des tools sont des caractères, pas des tokens ni un coût monétaire. Les durées ne valent que pour les appels mesurés.',
-    'N’attribue aucune cause non observée et ne déduis jamais le contenu de la conversation ou des tools.',
+    'Analyze only the JSON snapshot below. Focus on turns and tools without paraphrasing every KPI.',
+    'Respond in English, in 120 words or fewer, using exactly this Markdown structure:',
+    '**Summary** — one sentence characterizing the session without vague judgment.',
+    '- **Key turns** — cite one to three turns by number, ranked by cost first; give their cost and share of visible cost, then the metrics that distinguish them.',
+    '- **Tools** — identify frequent, failed, large, or slow tools and link them to their turn when known.',
+    '- **Cache & context** — explain only the overall signal or the signal for key turns.',
+    '**Priority** — one concrete action based on the most important signal, or “No priority action”.',
+    'A turn is key here based on its absolute cost and share of visible turn cost. Associated tools characterize the turn; never attribute turn cost to them.',
+    'Support each observation with one or two values. If an axis is healthy, say so; if data is missing or partial, briefly qualify it.',
+    'cacheReadPercentOfInput measures the share of input tokens reread from cache: a high value is generally positive. Tool lengths are characters, not tokens or monetary cost. Durations apply only to measured calls.',
+    'Do not attribute unobserved causes or infer the content of the conversation or tools.',
     '<session_analysis_json>',
     JSON.stringify(snapshot),
     '</session_analysis_json>',

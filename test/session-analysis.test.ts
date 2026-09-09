@@ -57,7 +57,7 @@ test('reconstruit les requêtes multi-appels et calcule les statistiques par ré
       cost: 0.07,
       toolCalls: 1,
       tokens: { input: 600, output: 60, cacheRead: 6_000, cacheWrite: 90 },
-      contextUsage: { percent: 42.5 },
+      contextUsage: { tokens: 79_000, contextWindow: 828_000, percent: 42.5 },
     },
     true,
     { requestDurations: new Map([[100, 1_250]]) },
@@ -116,6 +116,8 @@ test('reconstruit les requêtes multi-appels et calcule les statistiques par ré
   assert.equal(analysis.attributionAvailable, true)
   assert.equal(analysis.tokensAvailable, true)
   assert.equal(analysis.contextPercent, 42.5)
+  assert.equal(analysis.contextTokens, 79_000)
+  assert.equal(analysis.contextWindow, 828_000)
 })
 
 test('compte uniquement les erreurs explicites et déduplique la télémétrie live', () => {
@@ -260,7 +262,7 @@ test('prépare un prompt borné sans transmettre les sorties des outils', () => 
   assert.match(prompt, /"turn":1,"name":"read"/)
   assert.match(prompt, /"tools":\["read"\]/)
   assert.match(prompt, /"observedFailurePercent":100/)
-  assert.match(prompt, /\*\*Turns clés\*\*/)
+  assert.match(prompt, /\*\*Key turns\*\*/)
   assert.match(prompt, /"failed":true/)
   assert.doesNotMatch(prompt, /costlyRequests|topRequest/)
   assert.doesNotMatch(prompt, /Inspecte la session/)
