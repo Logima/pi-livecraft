@@ -4,7 +4,7 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: clip;
-  padding: 42px max(28px, calc((100% - 1000px) / 2)) 30px;
+  padding: 42px max(28px, calc((100% - 1000px) / 2)) 0;
   scrollbar-gutter: stable;
 }
 .conversation-content {
@@ -21,19 +21,28 @@
   display: grid;
   place-items: center;
   width: 36px;
-  height: 36px;
-  border: 1px solid var(--line-strong);
+  height: 0;
+  border: 0 solid var(--line-strong);
   border-radius: 50%;
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-soft);
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms ease;
+  transition:
+    height 180ms ease,
+    border-width 180ms ease,
+    opacity 180ms ease,
+    visibility 0s linear 180ms;
 }
 .scroll-to-bottom.visible {
+  height: 36px;
+  border-width: 1px;
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
+  transition-delay: 0s;
 }
 .scroll-to-bottom:hover {
   border-color: var(--accent);

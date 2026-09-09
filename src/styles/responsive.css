@@ -83,7 +83,7 @@
     display: none;
   }
   .conversation {
-    padding: 28px 20px;
+    padding: 28px 20px 0;
   }
   .composer, .ask-user-question {
     width: calc(100% - 32px);
@@ -195,7 +195,7 @@
     font-size: 12px;
   }
   .conversation {
-    padding: 20px 12px;
+    padding: 20px 12px 0;
   }
   .message.assistant {
     padding-inline: 2px;

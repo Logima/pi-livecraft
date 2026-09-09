@@ -2,6 +2,11 @@
   position: relative;
   margin: 0 0 26px;
 }
+.conversation-content > :last-child:is(.message, .tool-call, .turn-usage, .conversation-activity),
+.conversation-content > :last-child > :last-child:is(.message, .tool-call, .turn-usage, .conversation-activity) {
+  margin-bottom: 0;
+}
+
 .message.user {
   width: fit-content;
   max-width: 78%;
