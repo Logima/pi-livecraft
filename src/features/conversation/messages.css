@@ -81,7 +81,7 @@
 }
 .turn-usage dd {
   margin: 0;
-  color: var(--ink);
+  color: var(--subtle);
 }
 .message-time {
   display: block;
