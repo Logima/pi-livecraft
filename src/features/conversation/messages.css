@@ -83,6 +83,9 @@
   margin: 0;
   color: var(--subtle);
 }
+.turn-usage-time {
+  color: var(--subtle);
+}
 .message-time {
   display: block;
   margin-top: 8px;

@@ -94,13 +94,10 @@ export function TurnUsage(
         </div>
       )}
       {validTime && (
-        <div>
-          <dt>Time</dt>
-          <dd>
-            <time dateTime={validTime.toISOString()} title={formatFullDateTime(validTime)}>
-              {formatMessageTime(validTime)}
-            </time>
-          </dd>
+        <div className='turn-usage-time'>
+          <time dateTime={validTime.toISOString()} title={formatFullDateTime(validTime)}>
+            {formatMessageTime(validTime)}
+          </time>
         </div>
       )}
       <div>
@@ -132,11 +129,19 @@ function formatMessageTime(time: Date): string {
 }
 
 function formatFullDateTime(time: Date): string {
-  return time.toLocaleString(navigator.language, {
-    dateStyle: 'full',
-    timeStyle: 'long',
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hourCycle: 'h23',
-  })
+    timeZoneName: 'shortOffset',
+  }).formatToParts(time)
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+  const offset = values.timeZoneName?.replace(/GMT([+-])0?(\d{1,2}):00$/, 'GMT$1$2') ?? 'GMT+0'
+  return `${values.day}.${values.month}.${values.year} ${values.hour}:${values.minute}:${values.second} ${offset}`
 }
 
 function visibleText(content: unknown): string {
