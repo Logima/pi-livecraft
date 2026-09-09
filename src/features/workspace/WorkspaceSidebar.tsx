@@ -360,7 +360,7 @@ export function WorkspaceSidebar({
               key={recentSession.sessionPath}
               hint='Right-click to pin, rename, or close the session'
               label={`${recentSession.name}\n${
-                new Date(recentSession.updatedAt).toLocaleString('en-US')
+                new Date(recentSession.updatedAt).toLocaleString('en-US', { hourCycle: 'h23' })
               }`}
             >
               <button

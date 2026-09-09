@@ -52,8 +52,9 @@ const DefaultMessageCard = memo(
           <time
             className='message-time'
             dateTime={time.toISOString()}
+            title={formatFullDateTime(time)}
           >
-            {time.toLocaleTimeString(navigator.language, { hour: '2-digit', minute: '2-digit' })}
+            {formatMessageTime(time)}
           </time>
         )}
       </article>
@@ -75,7 +76,15 @@ function DefaultCustomMessage({ message }: { message: JsonObject & { customType?
 }
 
 /** Displays counters billed by Pi for a completed assistant response. */
-export function TurnUsage({ turnNumber, usage }: { turnNumber?: number; usage: MessageUsage }) {
+export function TurnUsage(
+  { timestamp, turnNumber, usage }: {
+    timestamp?: number
+    turnNumber?: number
+    usage: MessageUsage
+  },
+) {
+  const time = typeof timestamp === 'number' ? new Date(timestamp) : null
+  const validTime = time && !Number.isNaN(time.getTime()) ? time : null
   return (
     <dl className='turn-usage'>
       {turnNumber !== undefined && (
@@ -84,10 +93,16 @@ export function TurnUsage({ turnNumber, usage }: { turnNumber?: number; usage: M
           <dd>{turnNumber}</dd>
         </div>
       )}
-      <div>
-        <dt>Cost</dt>
-        <dd>{formatTurnCost(usage.cost)}</dd>
-      </div>
+      {validTime && (
+        <div>
+          <dt>Time</dt>
+          <dd>
+            <time dateTime={validTime.toISOString()} title={formatFullDateTime(validTime)}>
+              {formatMessageTime(validTime)}
+            </time>
+          </dd>
+        </div>
+      )}
       <div>
         <dt>Cache read</dt>
         <dd>{formatTokens(usage.cacheRead)}</dd>
@@ -100,8 +115,28 @@ export function TurnUsage({ turnNumber, usage }: { turnNumber?: number; usage: M
         <dt>Output</dt>
         <dd>{formatTokens(usage.output)}</dd>
       </div>
+      <div>
+        <dt>Cost</dt>
+        <dd>{formatTurnCost(usage.cost)}</dd>
+      </div>
     </dl>
   )
+}
+
+function formatMessageTime(time: Date): string {
+  return time.toLocaleTimeString(navigator.language, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+}
+
+function formatFullDateTime(time: Date): string {
+  return time.toLocaleString(navigator.language, {
+    dateStyle: 'full',
+    timeStyle: 'long',
+    hourCycle: 'h23',
+  })
 }
 
 function visibleText(content: unknown): string {

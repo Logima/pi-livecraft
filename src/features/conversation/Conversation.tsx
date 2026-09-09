@@ -383,7 +383,13 @@ export function Conversation(
                     />
                   )
                 })}
-                {usage && <TurnUsage turnNumber={turnNumbers.get(index)} usage={usage} />}
+                {usage && (
+                  <TurnUsage
+                    timestamp={typeof message.timestamp === 'number' ? message.timestamp : undefined}
+                    turnNumber={turnNumbers.get(index)}
+                    usage={usage}
+                  />
+                )}
               </div>
             )
           }

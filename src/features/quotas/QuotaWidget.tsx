@@ -133,7 +133,11 @@ function formatRelativeDate(timestamp: number): string {
   const elapsedMinutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000))
   if (elapsedMinutes < 1) return 'just now'
   if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`
-  return new Intl.DateTimeFormat(navigator.language, { dateStyle: 'short', timeStyle: 'short' })
+  return new Intl.DateTimeFormat(navigator.language, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    hourCycle: 'h23',
+  })
     .format(timestamp)
 }
 
@@ -142,6 +146,7 @@ function formatReset(timestamp: number): string {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
+    hourCycle: 'h23',
     minute: '2-digit',
   })
     .format(timestamp)
