@@ -2,6 +2,7 @@
   display: flex;
   min-width: 0;
   min-height: 0;
+  border-left: 5px solid #000;
   background: var(--surface);
 }
 .right-sidebar-panel {
@@ -11,12 +12,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--panel-line);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 8%, var(--surface)) 0%,
-    var(--surface) 100%
-  );
+  background: var(--surface);
 }
 .right-sidebar-resize-handle {
   position: absolute;

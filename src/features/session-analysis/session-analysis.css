@@ -378,26 +378,26 @@
   font-weight: 700;
 }
 .token-series-miss {
-  color: var(--accent);
+  color: var(--danger);
 }
 .token-series-read {
   color: var(--secondary);
 }
 .token-series-output {
-  color: var(--warning-strong);
+  color: color-mix(in srgb, var(--warning-strong) 72%, var(--canvas));
 }
 .token-tooltip-value {
   font-size: 8px;
   font-weight: 650;
 }
 .token-tooltip-value.token-series-miss {
-  fill: var(--accent);
+  fill: var(--danger);
 }
 .token-tooltip-value.token-series-read {
   fill: var(--secondary);
 }
 .token-tooltip-value.token-series-output {
-  fill: var(--warning-strong);
+  fill: color-mix(in srgb, var(--warning-strong) 72%, var(--canvas));
 }
 .tool-usage-ranking {
   display: grid;

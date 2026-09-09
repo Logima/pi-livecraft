@@ -62,14 +62,14 @@ const LIGHT_PALETTE: ThemePalette = {
 }
 
 const DARK_PALETTE: ThemePalette = {
-  canvas: '#171c1a',
-  surface: '#1e2422',
-  ink: '#dde3e0',
-  accent: '#4fb9ab',
-  secondary: '#9d91d4',
-  success: '#59ba7c',
-  warning: '#d6aa45',
-  danger: '#e26e63',
+  canvas: '#0a0a0a',
+  surface: '#161616',
+  ink: '#eeeeee',
+  accent: '#fab283',
+  secondary: '#9d7cd8',
+  success: '#7fd88f',
+  warning: '#f5a742',
+  danger: '#e06c75',
 }
 
 const GIPITY_PALETTE: ThemePalette = {

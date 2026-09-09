@@ -248,3 +248,41 @@
     padding-left: 4px;
   }
 }
+
+/* Dark mode keeps action controls neutral so the accent remains reserved for emphasis. */
+[data-theme="dark"] {
+  .message.user {
+    background: #242424;
+    color: var(--ink);
+  }
+  .message.user .message-time {
+    color: #a0a0a0;
+  }
+  .new-session,
+  .icon-button.send,
+  .icon-button.send.command,
+  .prompt-save-actions button.primary,
+  .prompt-suggestion-actions button.accept,
+  .settings-panel footer .primary,
+  .modal-actions button.primary,
+  .ask-user-question-actions > div button.primary,
+  .analysis-interpretation > header button,
+  .todo-add button,
+  .git-actions button {
+    border-color: #3e3e3e;
+    background: #2e2e2e;
+    color: var(--ink);
+    box-shadow: none;
+  }
+  .new-session:hover:not(:disabled),
+  .icon-button.send:hover:not(:disabled),
+  .icon-button.send.command:hover:not(:disabled),
+  .prompt-save-actions button.primary:hover:not(:disabled),
+  .prompt-suggestion-actions button.accept:hover:not(:disabled),
+  .analysis-interpretation > header button:hover:not(:disabled),
+  .todo-add button:hover:not(:disabled),
+  .git-actions button:hover:not(:disabled) {
+    border-color: #505050;
+    background: #3e3e3e;
+  }
+}

@@ -6,12 +6,8 @@
   min-width: 0;
   padding: 16px 12px 12px;
   overflow: hidden;
-  border-right: 1px solid var(--panel-line);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 15%, var(--sidebar)) 0%,
-    var(--sidebar) 100%
-  );
+  border-right: 5px solid #000;
+  background: var(--sidebar);
 }
 .sidebar.collapsed {
   width: 0;
