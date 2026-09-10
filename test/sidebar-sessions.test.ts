@@ -55,6 +55,21 @@ test('orders sessions by their latest activity', () => {
   assert.deepEqual(sidebarSessions([older, newer], '/workspace'), [newer, older])
 })
 
+test('puts active sessions before inactive sessions', () => {
+  const inactive = { ...persisted, updatedAt: 900 }
+  const active = {
+    ...persisted,
+    id: 'active-id',
+    sessionPath: '/sessions/active.jsonl',
+    updatedAt: 100,
+  }
+
+  assert.deepEqual(
+    sidebarSessions([inactive, active], '/workspace', [], new Set([active.sessionPath])),
+    [active, inactive],
+  )
+})
+
 // -- otherWorkspaceSessions ------------------------------------------------
 
 const remoteSession: SessionSummary = {

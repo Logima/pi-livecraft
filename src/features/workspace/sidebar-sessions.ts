@@ -15,6 +15,7 @@ export function sidebarSessions(
   recentSessions: RecentSession[],
   workspacePath: string,
   sentSessions: RecentSession[] = [],
+  activeSessionPaths: ReadonlySet<string> = new Set(),
 ): RecentSession[] {
   const recentIds = new Set(recentSessions.map((session) => session.id))
   const recentPaths = new Set(recentSessions.map((session) => session.sessionPath))
@@ -23,7 +24,11 @@ export function sidebarSessions(
   )
   return [...pending, ...recentSessions]
     .filter(({ cwd }) => cwd === workspacePath)
-    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .sort((left, right) => {
+      const activeOrder = Number(activeSessionPaths.has(right.sessionPath))
+        - Number(activeSessionPaths.has(left.sessionPath))
+      return activeOrder || right.updatedAt - left.updatedAt
+    })
 }
 
 /** Picks the next visible active session after closing the selected one. */

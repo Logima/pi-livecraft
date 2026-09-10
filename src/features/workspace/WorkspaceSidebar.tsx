@@ -93,9 +93,17 @@ export function WorkspaceSidebar({
     () => new Set(pinnedSessions.map((session) => session.sessionPath)),
     [pinnedSessions],
   )
+  const activeSessionPaths = useMemo(
+    () => new Set(
+      sessions.flatMap((session) =>
+        session.status !== 'exited' && session.sessionPath ? [session.sessionPath] : []
+      ),
+    ),
+    [sessions],
+  )
   const visibleSessions = useMemo(
-    () => sidebarSessions(recentSessions, workspacePath, sentSessions),
-    [recentSessions, sentSessions, workspacePath],
+    () => sidebarSessions(recentSessions, workspacePath, sentSessions, activeSessionPaths),
+    [activeSessionPaths, recentSessions, sentSessions, workspacePath],
   )
   const otherSessions = useMemo(
     () =>
