@@ -37,10 +37,10 @@ test('keeps a current activity through thinking, tool preparation, execution, an
     'Worker is preparing a tool call…',
   )
   assert.equal(activityText({ kind: 'tool-waiting' }, 'worker'), 'Worker is waiting for the tool…')
-  assert.equal(activityText(activity, 'worker'), 'Worker is getting things moving…')
+  assert.equal(activityText(activity, 'worker'), 'Worker is working…')
   assert.equal(
     activityText({ kind: 'thinking', thinking: '**Inspecting** files' }, undefined),
-    'Pi is thinking hard…',
+    'Pi is thinking…',
   )
 
   activity = activityForPiEvent(activity, {
@@ -69,7 +69,7 @@ test('keeps thinking content out of the activity label', () => {
     kind: 'thinking',
     thinking: '**Inspecting** files\n**Checking** tests',
   })
-  assert.equal(activityText(activity, undefined), 'Pi is thinking hard…')
+  assert.equal(activityText(activity, undefined), 'Pi is thinking…')
 })
 
 test('reports compaction until Pi continues or settles', () => {
@@ -111,6 +111,6 @@ test('restores reliable activity from connection and session status', () => {
 })
 
 test('uses playful activity labels', () => {
-  assert.equal(activityText({ kind: 'disconnected' }, 'pi'), 'Pi is off the radar 📡')
+  assert.equal(activityText({ kind: 'disconnected' }, 'pi'), 'Pi has disconnected')
   assert.equal(activityText({ kind: 'writing' }, 'pi'), 'Pi is writing…')
 })

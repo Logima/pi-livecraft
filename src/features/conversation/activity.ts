@@ -77,9 +77,9 @@ export function activityText(activity: Activity, agentName: string | undefined):
 
 /** Produces the variable part of the label so it can be animated independently of the name. */
 export function activityActionText(activity: Activity): string {
-  if (activity.kind === 'connecting') return 'is untangling the connection cable…'
-  if (activity.kind === 'disconnected') return 'is off the radar 📡'
-  if (activity.kind === 'exited') return 'has left the building 👋'
+  if (activity.kind === 'connecting') return 'is connecting…'
+  if (activity.kind === 'disconnected') return 'has disconnected'
+  if (activity.kind === 'exited') return 'has exited 👋'
   if (activity.kind === 'retrying') {
     const progress = activity.attempt !== undefined && activity.maxAttempts !== undefined
       ? ` (${activity.attempt}/${activity.maxAttempts})`
@@ -87,11 +87,12 @@ export function activityActionText(activity: Activity): string {
     return `is reconnecting to the provider${progress}…`
   }
   if (activity.kind === 'compacting') return 'is compacting the session…'
-  if (activity.kind === 'thinking') return 'is thinking hard…'
+  if (activity.kind === 'thinking') return 'is thinking…'
   if (activity.kind === 'tool-preparing') return 'is preparing a tool call…'
   if (activity.kind === 'tool-waiting') return 'is waiting for the tool…'
   if (activity.kind === 'writing') return 'is writing…'
-  return 'is getting things moving…'
+  if (activity.kind === 'working') return 'is working…'
+  return 'is getting things moving (' + activity.kind + ')…'
 }
 
 export function activityAgentName(agentName: string | undefined): string {
