@@ -384,6 +384,19 @@ const TOKEN_SERIES = [
 type TokenSeriesKey = typeof TOKEN_SERIES[number]['key']
 const VISIBLE_TURNS = 20
 
+/** Formats a turn timestamp in the local timezone for chart tooltips. */
+function formatChartTimestamp(timestamp?: number): string | undefined {
+  if (typeof timestamp !== 'number') return undefined
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return undefined
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()} ${date.getHours()}:${
+    pad(
+      date.getMinutes(),
+    )
+  }:${pad(date.getSeconds())}`
+}
+
 /** Compares token volumes for each turn with distinct, navigable series. */
 function TokenUsageChart(
   { onNavigate, turns }: {
@@ -427,6 +440,7 @@ function TokenUsageChart(
   }))
   const activePoint = points.find(({ turn }) => turn.messageIndex === activePointIndex)
   const tooltipWidth = 148
+  const activeTimestamp = activePoint ? formatChartTimestamp(activePoint.turn.timestamp) : undefined
   const toggleSeries = (key: TokenSeriesKey) =>
     setHiddenSeries((current) => {
       const next = new Set(current)
@@ -543,7 +557,7 @@ function TokenUsageChart(
                 } ${padding.top + 4})`}
               >
                 <rect
-                  height={10 + (activePoint.values.length + 1) * 14}
+                  height={10 + (activePoint.values.length + (activeTimestamp ? 2 : 1)) * 14}
                   rx='6'
                   width={tooltipWidth}
                 />
@@ -551,6 +565,11 @@ function TokenUsageChart(
                   <tspan className='chart-tooltip-turn' x='10'>
                     Turn {activePoint.turn.number}
                   </tspan>
+                  {activeTimestamp && (
+                    <tspan className='chart-tooltip-time' dy={14} x='10'>
+                      {activeTimestamp}
+                    </tspan>
+                  )}
                   {activePoint.values.map((point) => (
                     <tspan
                       className={`token-tooltip-value ${point.className}`}
@@ -606,6 +625,8 @@ function TurnCostChart(
   }))
   const activePoint = points.find(({ turn }) => turn.messageIndex === activePointIndex)
   const tooltipWidth = 124
+  const activeTimestamp = activePoint ? formatChartTimestamp(activePoint.turn.timestamp) : undefined
+  const tooltipHeight = activeTimestamp ? 66 : 52
 
   return (
     <div className='turn-cost-chart-frame'>
@@ -670,14 +691,19 @@ function TurnCostChart(
                   Math.max(padding.left, activePoint.x - tooltipWidth / 2),
                 )
               } ${
-                activePoint.y < padding.top + 48
+                activePoint.y < padding.top + tooltipHeight
                   ? activePoint.y + 13
-                  : activePoint.y - 47
+                  : activePoint.y - tooltipHeight + 5
               })`}
             >
-              <rect height='52' rx='6' width={tooltipWidth} />
+              <rect height={tooltipHeight} rx='6' width={tooltipWidth} />
               <text x='10' y='14'>
                 <tspan className='chart-tooltip-turn' x='10'>Turn {activePoint.turn.number}</tspan>
+                {activeTimestamp && (
+                  <tspan className='chart-tooltip-time' x='10' dy='14'>
+                    {activeTimestamp}
+                  </tspan>
+                )}
                 <tspan className='chart-tooltip-cost' x='10' dy='14'>
                   {formatTurnCost(activePoint.turn.cost)}
                 </tspan>

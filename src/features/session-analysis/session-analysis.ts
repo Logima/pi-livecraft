@@ -21,6 +21,7 @@ export type SessionAnalysisTarget = { kind: 'message' | 'turn'; index: number } 
 export interface AnalyzedTurn {
   messageIndex: number
   number: number
+  timestamp?: number
   cost: number
   usage: MessageUsage
   toolCallCount: number
@@ -204,6 +205,9 @@ export function analyzeSession(
   const turns = [...turnUsageByMessage(messages)].map(([messageIndex, usage], index) => ({
     messageIndex,
     number: index + 1,
+    ...(typeof messages[messageIndex]?.timestamp === 'number'
+      ? { timestamp: messages[messageIndex].timestamp }
+      : {}),
     cost: usage.cost,
     usage,
     toolCallCount: toolCallsInMessage(messages[messageIndex] ?? {}).length,

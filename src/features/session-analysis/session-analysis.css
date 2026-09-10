@@ -377,6 +377,10 @@
 .chart-tooltip-turn {
   font-weight: 700;
 }
+.chart-tooltip-time {
+  fill: var(--muted);
+  font-size: 9px;
+}
 .token-series-miss {
   color: var(--danger);
 }

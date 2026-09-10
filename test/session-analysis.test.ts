@@ -41,6 +41,7 @@ test('reconstruit les requêtes multi-appels et calcule les statistiques par ré
     },
     {
       role: 'assistant',
+      timestamp: 150,
       content: [{ type: 'text', text: 'Première réponse.' }],
       usage: usage(200, 20, 2_000, 30, 0.02),
     },
@@ -92,6 +93,7 @@ test('reconstruit les requêtes multi-appels et calcule les statistiques par ré
     {
       messageIndex: 3,
       number: 2,
+      timestamp: 150,
       cost: 0.02,
       usage: { cacheMiss: 200, cacheRead: 2_000, cacheWrite: 30, cost: 0.02, output: 20 },
       toolCallCount: 0,
