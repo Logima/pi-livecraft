@@ -55,7 +55,11 @@ export function QuotaWidget(
                     label={`${formatPercent(window.remainingPercent)} remaining`}
                     value={window.remainingPercent}
                   />
-                  {window.resetsAt && <small>Reset {formatReset(window.resetsAt)}</small>}
+                  {window.resetsAt && (
+                    <small title={`Reset at ${formatResetDate(window.resetsAt)}`}>
+                      Reset in {formatResetDistance(window.resetsAt)}
+                    </small>
+                  )}
                 </div>
               ))}
             </ProviderSection>
@@ -70,7 +74,11 @@ export function QuotaWidget(
                     label={`${formatNumber(window.used)} used of ${formatNumber(window.limit)}`}
                     value={window.used / window.limit * 100}
                   />
-                  {window.resetsAt && <small>Reset {formatReset(window.resetsAt)}</small>}
+                  {window.resetsAt && (
+                    <small title={`Reset at ${formatResetDate(window.resetsAt)}`}>
+                      Reset in {formatResetDistance(window.resetsAt)}
+                    </small>
+                  )}
                 </div>
               ))}
             </ProviderSection>
@@ -141,15 +149,21 @@ function formatRelativeDate(timestamp: number): string {
     .format(timestamp)
 }
 
-function formatReset(timestamp: number): string {
-  return new Intl.DateTimeFormat(navigator.language, {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    hourCycle: 'h23',
-    minute: '2-digit',
-  })
-    .format(timestamp)
+function formatResetDistance(timestamp: number): string {
+  const remainingHours = Math.max(0, Math.floor((timestamp - Date.now()) / 3_600_000))
+  const days = Math.floor(remainingHours / 24)
+  const hours = remainingHours % 24
+  return days > 0 ? `${days}d ${hours}h` : `${hours}h`
+}
+
+function formatResetDate(timestamp: number): string {
+  const date = new Date(timestamp)
+  const day = date.getDate()
+  const month = date.getMonth() + 1
+  const year = date.getFullYear()
+  const hours = date.getHours()
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${day}.${month}.${year} ${hours}:${minutes}`
 }
 
 function formatPercent(value: number): string {
