@@ -236,10 +236,6 @@ function App() {
       const publish = () => {
         pendingManagerUnavailableToastsRef.current.delete(toast.id)
         setToasts((current) => [...current, toast])
-        window.setTimeout(
-          () => startDismissal(toast.id),
-          kind === 'error' ? 5000 : 3000,
-        )
       }
       if (kind === 'error' && message === managerUnavailableMessage) {
         const timer = window.setTimeout(publish, managerUnavailableToastDelayMs)
@@ -248,7 +244,7 @@ function App() {
       }
       publish()
     },
-    [startDismissal],
+    [],
   )
   const clearManagerUnavailableToasts = useCallback(() => {
     for (const timer of pendingManagerUnavailableToastsRef.current.values()) {

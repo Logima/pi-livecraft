@@ -6,7 +6,7 @@ export interface Toast {
   dismissing?: boolean
 }
 
-/** Displays temporary notifications above the input area. */
+/** Displays notifications above the input area until they are explicitly dismissed. */
 export function ToastStack({ onDismiss, standalone = false, toasts }: {
   onDismiss: (id: string) => void
   standalone?: boolean

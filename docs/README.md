@@ -15,7 +15,7 @@ Pi Livecraft is documented in layers: begin with the system you want to build on
 - **Add an action to a message or tool call:** [step-by-step guide](/docs/HOW-TO-CONVERSATION-ACTION.md), then [conversation contract](/src/features/conversation/README.md).
 - **Change a tool call display:** [step-by-step guide](/docs/HOW-TO-TOOL-PRESENTATION.md), then [conversation contract](/src/features/conversation/README.md).
 - **Change extension dialogs or questionnaires:** [dialog protocol](/src/features/dialogs/README.md), then [Pi extensions](/pi-extensions/README.md).
-- **Change transient notices or errors:** [notifications](/src/features/notifications/README.md).
+- **Change notices or errors:** [notifications](/src/features/notifications/README.md).
 - **Change Git, quotas, terminal, or todos on the server:** [backend capabilities](/server/features/README.md).
 - **Change manager runtime, supervision, or restart behavior:** [manager lifecycle](/docs/MANAGER-LIFECYCLE.md).
 - **Send a command to a Pi session or inspect its data:** [how to talk to Pi](/docs/HOW-TO-TALK-TO-PI.md), which explains how to locate the upstream RPC reference installed with Pi.
