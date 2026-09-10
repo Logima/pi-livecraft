@@ -8,6 +8,7 @@ import {
   getGitSnapshot,
   getQuotas,
   improvePrompt,
+  listRecentSessions,
   openExplorer,
   openSession,
   openTerminal,
@@ -50,7 +51,11 @@ import {
 import { RightSidebar } from './features/right-sidebar/RightSidebar.tsx'
 import { quotaProviderForModel } from './features/quotas/quota-display.ts'
 import { DirectoryPicker } from './features/workspace/DirectoryPicker.tsx'
-import { sidebarSessions, type PinnedSession } from './features/workspace/sidebar-sessions.ts'
+import {
+  relatedAgentSession,
+  sidebarSessions,
+  type PinnedSession,
+} from './features/workspace/sidebar-sessions.ts'
 import { useWorkspaceSessions } from './features/workspace/useWorkspaceSessions.ts'
 import { WorkspaceSidebar } from './features/workspace/WorkspaceSidebar.tsx'
 import {
@@ -370,6 +375,17 @@ function App() {
     [selectWorkspace, startWorkspaceSession],
   )
 
+  /** Opens the persisted child session identified by an Agent tool result. */
+  const openAgentSession = useCallback(async (agentId: string): Promise<void> => {
+    const parentPath = sessions.find((session) => session.id === selectedId)?.sessionPath
+    if (!parentPath) throw new Error('Agent session is unavailable')
+    const currentRelated = relatedAgentSession(recentSessions, parentPath, agentId)
+    const related = currentRelated
+      ?? relatedAgentSession(await listRecentSessions(workspacePath), parentPath, agentId)
+    if (!related) throw new Error('Agent session is unavailable')
+    await startAndSelectSession(() => openSession(related.cwd, related.sessionPath))
+  }, [recentSessions, selectedId, sessions, startAndSelectSession, workspacePath])
+
   const {
     activity,
     addOptimisticUserMessage,
@@ -627,6 +643,19 @@ function App() {
       }
       if (event.type === 'tool_execution_end') scheduleGitRefresh()
       if (
+        (event.type === 'tool_execution_start' || event.type === 'tool_execution_update')
+        && event.toolName === 'Agent'
+      ) {
+        // The child file is created just after tool start, so let Pi persist its header first.
+        window.setTimeout(() => void refreshSessions(), 250)
+      }
+      if (event.type === 'tool_execution_end' && event.toolName === 'Agent') void refreshSessions()
+      if (
+        event.type === 'message_end' && isObject(event.message)
+        && event.message.role === 'custom'
+        && event.message.customType === 'subagent-notification'
+      ) void refreshSessions()
+      if (
         event.type === 'extension_ui_request' && event.method === 'setStatus'
         && event.statusKey === 'agent'
       ) {
@@ -688,6 +717,7 @@ function App() {
       handlePiEvent,
       markSessionCompleted,
       refreshSessionQuotas,
+      refreshSessions,
       scheduleGitRefresh,
       renameSession,
       selectCreatedSession,
@@ -1177,6 +1207,7 @@ function App() {
                     onKillTool={handleToolKill}
                     onError={handleConversationError}
                     onFork={handleForkConversation}
+                    onOpenAgentSession={openAgentSession}
                     pendingSteering={pendingSteering}
                     repositoryRoot={gitSnapshot?.root}
                     scrollToBottomRequest={scrollToBottomRequest}

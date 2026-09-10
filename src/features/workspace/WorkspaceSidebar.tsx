@@ -15,6 +15,7 @@ import { SessionStatusIndicator } from './SessionStatusIndicator.tsx'
 import {
   otherWorkspacePinnedSessions,
   otherWorkspaceSessions,
+  relatedParentSessionPaths,
   sidebarSessionTree,
   type PinnedSession,
   type SessionActionTarget,
@@ -96,20 +97,22 @@ export function WorkspaceSidebar({
     [pinnedSessions],
   )
   const activeSessionPaths = useMemo(
-    () => new Set(
-      sessions.flatMap((session) =>
-        session.status !== 'exited' && session.sessionPath ? [session.sessionPath] : []
+    () =>
+      new Set(
+        sessions.flatMap((session) =>
+          session.status !== 'exited' && session.sessionPath ? [session.sessionPath] : []
+        ),
       ),
-    ),
     [sessions],
   )
   const sessionTree = useMemo(
-    () => sidebarSessionTree(
-      recentSessions,
-      workspacePath,
-      sentSessions,
-      activeSessionPaths,
-    ),
+    () =>
+      sidebarSessionTree(
+        recentSessions,
+        workspacePath,
+        sentSessions,
+        activeSessionPaths,
+      ),
     [activeSessionPaths, recentSessions, sentSessions, workspacePath],
   )
   const otherSessions = useMemo(
@@ -131,6 +134,21 @@ export function WorkspaceSidebar({
   useEffect(() => {
     selectedSessionRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [selectedId, sessionTree])
+
+  useEffect(() => {
+    const selectedPath = sessions.find((session) => session.id === selectedId)?.sessionPath
+    if (!selectedPath) return
+    const parentPaths = relatedParentSessionPaths(
+      [...recentSessions, ...sentSessions],
+      selectedPath,
+    )
+    if (parentPaths.length === 0) return
+    setExpandedSessionPaths((current) => {
+      const next = new Set(current)
+      for (const path of parentPaths) next.add(path)
+      return next.size === current.size ? current : next
+    })
+  }, [recentSessions, selectedId, sentSessions, sessions])
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return
@@ -272,12 +290,26 @@ export function WorkspaceSidebar({
     const activeSession = sessions.find((session) =>
       session.sessionPath === recentSession.sessionPath && session.status !== 'exited'
     )
-    const indicator = sessionIndicator(
+    const managedIndicator = sessionIndicator(
       activeSession,
       selectedId,
       compactingSessionIds,
       completedSessionIds,
     )
+    const agentIndicator = recentSession.agentStatus === 'running'
+      ? 'working'
+      : recentSession.agentStatus === 'finished'
+      ? 'complete'
+      : null
+    const indicator = managedIndicator ?? agentIndicator
+    const indicatorClass = managedIndicator ?? (agentIndicator === 'working' ? 'working' : null)
+    const indicatorLabel = managedIndicator
+      ? undefined
+      : agentIndicator === 'working'
+      ? 'Delegated agent is running'
+      : agentIndicator === 'complete'
+      ? 'Delegated agent finished'
+      : undefined
     const isPinned = pinnedSessionPaths.has(recentSession.sessionPath)
     const isExpanded = expandedSessionPaths.has(recentSession.sessionPath)
     const displayName = recentSession.displayName ?? recentSession.name
@@ -297,7 +329,9 @@ export function WorkspaceSidebar({
             ? (
               <button
                 aria-expanded={isExpanded}
-                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.children.length} related ${
+                aria-label={`${
+                  isExpanded ? 'Collapse' : 'Expand'
+                } ${node.children.length} related ${
                   node.children.length === 1 ? 'session' : 'sessions'
                 } for ${displayName}`}
                 className={`session-tree-toggle${isExpanded ? ' expanded' : ''}`}
@@ -323,7 +357,7 @@ export function WorkspaceSidebar({
           >
             <button
               className={`session-item${activeSession?.id === selectedId ? ' selected' : ''}${
-                indicator ? ` ${indicator}` : ''
+                indicatorClass ? ` ${indicatorClass}` : ''
               }${isPinned ? ' pinned' : ''}`}
               aria-haspopup='menu'
               disabled={openingSessionPath === recentSession.sessionPath}
@@ -342,7 +376,7 @@ export function WorkspaceSidebar({
               ref={activeSession?.id === selectedId ? selectedSessionRef : undefined}
               type='button'
             >
-              {indicator && <SessionStatusIndicator status={indicator} />}
+              {indicator && <SessionStatusIndicator label={indicatorLabel} status={indicator} />}
               {isPinned && <PinIcon />}
               <span>
                 <strong>{sessionLabel}</strong>

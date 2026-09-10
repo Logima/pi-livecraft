@@ -15,6 +15,7 @@ export interface RecentSession {
   cwd: string
   name: string
   displayName?: string
+  agentStatus?: 'running' | 'finished'
   sessionPath: string
   parentSessionPath?: string
   updatedAt: number

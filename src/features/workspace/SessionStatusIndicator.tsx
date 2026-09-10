@@ -11,11 +11,14 @@ const indicatorLabels: Record<SessionIndicator, string> = {
 }
 
 /** Reusable indicator using the same visual vocabulary as the workspace sidebar. */
-export function SessionStatusIndicator({ status }: { status: SessionIndicator }) {
+export function SessionStatusIndicator(
+  { label, status }: { label?: string; status: SessionIndicator },
+) {
+  const accessibleLabel = label ?? indicatorLabels[status]
   return (
-    <Tooltip label={indicatorLabels[status]}>
+    <Tooltip label={accessibleLabel}>
       <span
-        aria-label={indicatorLabels[status]}
+        aria-label={accessibleLabel}
         className={`session-status-indicator ${status}`}
         role='img'
       >

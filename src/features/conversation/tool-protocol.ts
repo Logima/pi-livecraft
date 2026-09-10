@@ -28,6 +28,8 @@ export interface ToolCallUpdate {
   phase: 'start' | 'delta' | 'end'
 }
 
+export type AgentExecutionStatus = 'running' | 'finished'
+
 export interface ToolExecution extends ToolCall {
   contentIndex?: number
   /** Retains delta-only JSON while public RPC omits partial assistant messages. */
@@ -35,6 +37,36 @@ export interface ToolExecution extends ToolCall {
   partialResult?: ToolResult
   result?: ToolResult
   status: 'generating' | 'running' | 'interrupted'
+}
+
+/** Reconciles Agent tool results with later background-completion notifications. */
+export function agentStatusesInMessages(
+  messages: readonly JsonObject[],
+): ReadonlyMap<string, AgentExecutionStatus> {
+  const statuses = new Map<string, AgentExecutionStatus>()
+  for (const message of messages) {
+    if (!isObject(message.details)) continue
+    const isAgentResult = message.role === 'toolResult' && message.toolName === 'Agent'
+    const isAgentNotification = message.role === 'custom'
+      && message.customType === 'subagent-notification'
+    if (!isAgentResult && !isAgentNotification) continue
+    const agentId = typeof message.details.agentId === 'string'
+      ? message.details.agentId
+      : typeof message.details.id === 'string'
+      ? message.details.id
+      : undefined
+    const status = agentExecutionStatus(message.details.status)
+    if (agentId && status) statuses.set(agentId, status)
+  }
+  return statuses
+}
+
+export function agentExecutionStatus(status: unknown): AgentExecutionStatus | undefined {
+  if (status === 'background' || status === 'running') return 'running'
+  if (
+    status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'steered'
+  ) return 'finished'
+  return undefined
 }
 
 /** Extracts every tool call embedded in an assistant message's content array. */

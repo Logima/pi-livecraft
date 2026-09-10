@@ -17,7 +17,12 @@ import {
   conversationMessageEntries,
   type LiveMessage,
 } from './message-reconciliation.ts'
-import { toolCallsInMessage, toolResultInMessage, type ToolExecution } from './tool-protocol.ts'
+import {
+  agentStatusesInMessages,
+  toolCallsInMessage,
+  toolResultInMessage,
+  type ToolExecution,
+} from './tool-protocol.ts'
 import type { SessionAnalysisTarget } from '../session-analysis/session-analysis.ts'
 import { ActivityIndicator } from './ActivityIndicator.tsx'
 import { Markdown } from './Markdown.tsx'
@@ -48,6 +53,7 @@ export function Conversation(
     onKillTool,
     onError,
     onFork,
+    onOpenAgentSession,
   }: {
     activity: Activity | null
     agentName?: string
@@ -64,6 +70,7 @@ export function Conversation(
     onKillTool: (toolCallId: string) => Promise<JsonObject>
     onError: (cause: unknown) => void
     onFork: (entryId: string) => Promise<boolean>
+    onOpenAgentSession: (agentId: string) => Promise<void>
   },
 ) {
   const showToolCalls = conversationView !== 'simple'
@@ -88,6 +95,14 @@ export function Conversation(
   const executionsByCallId = useMemo(
     () => new Map(toolExecutions.map((execution) => [execution.id, execution])),
     [toolExecutions],
+  )
+  const agentStatuses = useMemo(
+    () =>
+      agentStatusesInMessages([
+        ...allMessages,
+        ...liveMessages.map(({ message }) => message),
+      ]),
+    [allMessages, liveMessages],
   )
   /** Call IDs whose result has arrived, either from history or a live tool_execution_end. */
   const resolvedCallIds = useMemo(
@@ -364,6 +379,7 @@ export function Conversation(
                   const result = resultsByCallId.get(call.id) ?? execution?.result
                   return (
                     <ToolCallCard
+                      agentStatuses={agentStatuses}
                       args={call.args}
                       hasResult={result !== undefined}
                       semiDetailed={semiDetailed}
@@ -374,6 +390,7 @@ export function Conversation(
                       name={call.name}
                       onKill={() => onKillTool(call.id)}
                       onError={onError}
+                      onOpenAgentSession={onOpenAgentSession}
                       partialResultContent={execution?.partialResult?.content}
                       repositoryRoot={repositoryRoot}
                       resultContent={result?.content}
@@ -388,7 +405,9 @@ export function Conversation(
                 })}
                 {usage && (
                   <TurnUsage
-                    timestamp={typeof message.timestamp === 'number' ? message.timestamp : undefined}
+                    timestamp={typeof message.timestamp === 'number'
+                      ? message.timestamp
+                      : undefined}
                     turnNumber={turnNumbers.get(index)}
                     usage={usage}
                   />
@@ -421,6 +440,7 @@ export function Conversation(
                 const result = execution?.result
                 return (
                   <ToolCallCard
+                    agentStatuses={agentStatuses}
                     animateLiveChanges
                     args={part.call.args}
                     hasResult={result !== undefined}
@@ -434,6 +454,7 @@ export function Conversation(
                       .name}
                     onKill={() => onKillTool(part.call.id)}
                     onError={onError}
+                    onOpenAgentSession={onOpenAgentSession}
                     partialResultContent={execution?.partialResult?.content}
                     repositoryRoot={repositoryRoot}
                     resultContent={result?.content}
@@ -455,6 +476,7 @@ export function Conversation(
           )
           .map((execution) => (
             <ToolCallCard
+              agentStatuses={agentStatuses}
               animateLiveChanges
               args={execution.args}
               hasResult={execution.result !== undefined}
@@ -466,6 +488,7 @@ export function Conversation(
               name={execution.name}
               onKill={() => onKillTool(execution.id)}
               onError={onError}
+              onOpenAgentSession={onOpenAgentSession}
               partialResultContent={execution.partialResult?.content}
               repositoryRoot={repositoryRoot}
               resultContent={execution.result?.content}

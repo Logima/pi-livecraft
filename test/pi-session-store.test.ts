@@ -124,21 +124,24 @@ test('returns generated and user-created child sessions with their parent relati
   await writeSession(parentPath, workspace, 'parent', 'Parent session')
   await appendFile(
     parentPath,
-    `\n${JSON.stringify({
-      type: 'message',
-      timestamp: '2026-07-19T10:02:00.000Z',
-      message: {
-        role: 'toolResult',
-        toolCallId: 'call-agent',
-        toolName: 'Agent',
-        content: [{ type: 'text', text: 'Agent completed' }],
-        details: {
-          agentId: '2b38211f-1234-567',
-          description: 'Explore session metadata',
+    `\n${
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-07-19T10:02:00.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'call-agent',
+          toolName: 'Agent',
+          content: [{ type: 'text', text: 'Agent completed' }],
+          details: {
+            agentId: '2b38211f-1234-567',
+            description: 'Explore session metadata',
+            status: 'background',
+          },
+          isError: false,
         },
-        isError: false,
-      },
-    })}`,
+      })
+    }`,
   )
   await Promise.all([
     writeChildSession(
@@ -166,7 +169,25 @@ test('returns generated and user-created child sessions with their parent relati
   const agentChild = recent.find(({ id }) => id === 'agent-child')
   assert.equal(agentChild?.parentSessionPath, canonicalParentPath)
   assert.equal(agentChild?.displayName, 'Explore session metadata')
+  assert.equal(agentChild?.agentStatus, 'running')
   assert.equal(recent.find(({ id }) => id === 'user-child')?.parentSessionPath, canonicalParentPath)
+
+  await appendFile(
+    parentPath,
+    `\n${
+      JSON.stringify({
+        type: 'custom',
+        customType: 'subagents:record',
+        data: {
+          id: '2b38211f-1234-567',
+          description: 'Explore session metadata',
+          status: 'completed',
+        },
+      })
+    }`,
+  )
+  const completed = await listRecentPiSessions(workspace, directory)
+  assert.equal(completed.find(({ id }) => id === 'agent-child')?.agentStatus, 'finished')
 })
 
 test('limits top-level sessions without allowing children to displace their parent', async () => {
@@ -256,7 +277,8 @@ async function writeChildSession(
         timestamp: '2026-07-19T10:01:00.000Z',
         message: { role: 'user', content: name },
       }),
-    ].join('\n'),
+    ]
+      .join('\n'),
   )
 }
 

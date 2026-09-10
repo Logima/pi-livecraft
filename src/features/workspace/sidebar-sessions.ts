@@ -83,6 +83,36 @@ function wouldCreateSessionCycle(
   return false
 }
 
+/** Lists every available parent path that must expand to reveal a selected child. */
+export function relatedParentSessionPaths(
+  sessions: readonly RecentSession[],
+  selectedSessionPath: string,
+): string[] {
+  const byPath = new Map(sessions.map((session) => [session.sessionPath, session]))
+  const parentPaths: string[] = []
+  const visited = new Set<string>()
+  let parentPath = byPath.get(selectedSessionPath)?.parentSessionPath
+  while (parentPath && !visited.has(parentPath)) {
+    visited.add(parentPath)
+    parentPaths.push(parentPath)
+    parentPath = byPath.get(parentPath)?.parentSessionPath
+  }
+  return parentPaths
+}
+
+/** Finds the persisted child associated with an Agent result identifier. */
+export function relatedAgentSession(
+  sessions: readonly RecentSession[],
+  parentSessionPath: string,
+  agentId: string,
+): RecentSession | undefined {
+  const shortId = agentId.match(/^[0-9a-f]{8}/)?.[0]
+  if (!shortId) return undefined
+  return sessions.find((session) =>
+    session.parentSessionPath === parentSessionPath && session.name.endsWith(`#${shortId}`)
+  )
+}
+
 /** Picks the next visible active session after closing the selected one. */
 export function nextActiveSessionId(
   closedSessionId: string,

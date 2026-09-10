@@ -6,6 +6,7 @@ import {
   toolWriteContent,
 } from '../src/features/conversation/tool-presentation.ts'
 import {
+  agentStatusesInMessages,
   applyToolCallUpdate,
   applyToolExecutionUpdate,
   interruptToolCallGeneration,
@@ -17,6 +18,35 @@ import {
   toolResultInMessage,
   type ToolExecution,
 } from '../src/features/conversation/tool-protocol.ts'
+
+test('reconciles running Agent results with completion notifications', () => {
+  const statuses = agentStatusesInMessages([
+    {
+      role: 'toolResult',
+      toolName: 'Agent',
+      details: { agentId: 'agent-1', status: 'background' },
+    },
+    {
+      role: 'custom',
+      customType: 'subagent-notification',
+      details: { id: 'agent-1', status: 'completed' },
+    },
+    {
+      role: 'toolResult',
+      toolName: 'Agent',
+      details: { agentId: 'agent-2', status: 'running' },
+    },
+    {
+      role: 'toolResult',
+      toolName: 'Agent',
+      details: { agentId: 'agent-3', status: 'steered' },
+    },
+  ])
+
+  assert.equal(statuses.get('agent-1'), 'finished')
+  assert.equal(statuses.get('agent-2'), 'running')
+  assert.equal(statuses.get('agent-3'), 'finished')
+})
 
 test('extracts tool calls and their resolved result from Pi messages', () => {
   const calls = toolCallsInMessage({

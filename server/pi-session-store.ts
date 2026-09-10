@@ -33,12 +33,17 @@ const HEAD_CHUNK_BYTES = 64 * 1024
 const TAIL_CHUNK_BYTES = 64 * 1024
 const TAIL_SCAN_BUDGET = 2 * 1024 * 1024
 
-interface AgentDescriptionCacheEntry {
-  descriptions: Map<string, string>
+interface AgentMetadata {
+  description?: string
+  status?: 'running' | 'finished'
+}
+
+interface AgentMetadataCacheEntry {
+  agents: Map<string, AgentMetadata>
   offset: number
 }
 
-const agentDescriptionCache = new Map<string, AgentDescriptionCacheEntry>()
+const agentMetadataCache = new Map<string, AgentMetadataCacheEntry>()
 
 /** Reads only the metadata required to resume a Pi session. */
 export async function listRecentPiSessions(
@@ -315,30 +320,32 @@ async function addRelatedSessionDisplayNames(
     childrenByParent.set(session.parentSessionPath, siblings)
   }
 
-  const displayNames = new Map<string, string>()
+  const metadataBySessionPath = new Map<string, AgentMetadata>()
   await Promise.all([...childrenByParent].map(async ([parentPath, children]) => {
-    const descriptions = await readAgentDescriptions(parentPath)
+    const agents = await readAgentMetadata(parentPath)
     for (const child of children) {
       const agentId = generatedAgentId(child.name)
-      const description = agentId ? descriptions.get(agentId) : undefined
-      if (description) displayNames.set(child.sessionPath, description)
+      const metadata = agentId ? agents.get(agentId) : undefined
+      if (metadata) metadataBySessionPath.set(child.sessionPath, metadata)
     }
   }))
   return sessions.map((session) => {
-    const displayName = displayNames.get(session.sessionPath)
-    return displayName ? { ...session, displayName } : session
+    const metadata = metadataBySessionPath.get(session.sessionPath)
+    return metadata
+      ? { ...session, displayName: metadata.description, agentStatus: metadata.status }
+      : session
   })
 }
 
-/** Incrementally indexes Agent result metadata without loading large parent histories into memory. */
-async function readAgentDescriptions(parentPath: string): Promise<Map<string, string>> {
+/** Incrementally indexes Agent metadata without loading large parent histories into memory. */
+async function readAgentMetadata(parentPath: string): Promise<Map<string, AgentMetadata>> {
   const size = (await stat(parentPath)).size
-  let cached = agentDescriptionCache.get(parentPath)
+  let cached = agentMetadataCache.get(parentPath)
   if (!cached || size < cached.offset) {
-    cached = { descriptions: new Map(), offset: 0 }
-    agentDescriptionCache.set(parentPath, cached)
+    cached = { agents: new Map(), offset: 0 }
+    agentMetadataCache.set(parentPath, cached)
   }
-  if (size === cached.offset) return cached.descriptions
+  if (size === cached.offset) return cached.agents
 
   let pending = Buffer.alloc(0)
   let consumedOffset = cached.offset
@@ -346,32 +353,57 @@ async function readAgentDescriptions(parentPath: string): Promise<Map<string, st
     pending = Buffer.concat([pending, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)])
     let newlineIndex = pending.indexOf(0x0a)
     while (newlineIndex >= 0) {
-      indexAgentDescription(pending.subarray(0, newlineIndex).toString('utf8'), cached.descriptions)
+      indexAgentMetadata(pending.subarray(0, newlineIndex).toString('utf8'), cached.agents)
       consumedOffset += newlineIndex + 1
       pending = pending.subarray(newlineIndex + 1)
       newlineIndex = pending.indexOf(0x0a)
     }
   }
-  if (pending.length > 0 && indexAgentDescription(pending.toString('utf8'), cached.descriptions)) {
+  if (pending.length > 0 && indexAgentMetadata(pending.toString('utf8'), cached.agents)) {
     consumedOffset += pending.length
   }
   cached.offset = consumedOffset
-  return cached.descriptions
+  return cached.agents
 }
 
-/** Indexes one complete Agent result line and reports whether it was valid JSON. */
-function indexAgentDescription(line: string, descriptions: Map<string, string>): boolean {
+/** Indexes one complete Agent metadata line and reports whether it was valid JSON. */
+function indexAgentMetadata(line: string, agents: Map<string, AgentMetadata>): boolean {
   const entry = parseLine(line)
   if (!entry) return false
-  if (entry.type !== 'message' || !isObject(entry.message)) return true
-  const message = entry.message
-  if (message.role !== 'toolResult' || message.toolName !== 'Agent' || !isObject(message.details))
+  let details: Record<string, unknown> | undefined
+  if (
+    entry.type === 'message' && isObject(entry.message)
+    && entry.message.role === 'toolResult' && entry.message.toolName === 'Agent'
+    && isObject(entry.message.details)
+  ) details = entry.message.details
+  else if (
+    entry.type === 'custom' && entry.customType === 'subagents:record' && isObject(entry.data)
+  )
+    details = entry.data
+  else if (
+    entry.type === 'custom_message' && entry.customType === 'subagent-notification'
+    && isObject(entry.details)
+  ) details = entry.details
+  if (!details || (typeof details.agentId !== 'string' && typeof details.id !== 'string'))
     return true
-  const { agentId, description } = message.details
-  if (typeof agentId === 'string' && typeof description === 'string' && description.trim()) {
-    descriptions.set(agentId.slice(0, 8), description.trim())
-  }
+
+  const fullId = typeof details.agentId === 'string' ? details.agentId : details.id as string
+  const key = fullId.slice(0, 8)
+  const previous = agents.get(key) ?? {}
+  const description = typeof details.description === 'string' && details.description.trim()
+    ? details.description.trim()
+    : previous.description
+  const status = agentStatus(details.status) ?? previous.status
+  agents.set(key, { description, status })
   return true
+}
+
+function agentStatus(status: unknown): 'running' | 'finished' | undefined {
+  if (status === 'background' || status === 'running') return 'running'
+  if (
+    status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'steered'
+  ) return 'finished'
+  return undefined
 }
 
 function generatedAgentId(name: string): string | undefined {
@@ -384,15 +416,17 @@ function parentPathsToLoad(
   availablePaths: ReadonlySet<string>,
   attemptedPaths: ReadonlySet<string>,
 ): string[] {
-  return [...new Set(
-    [...loadedByPath.values()].flatMap((session) => {
-      const parentPath = session.parentSessionPath
-      return parentPath && availablePaths.has(parentPath) && !loadedByPath.has(parentPath)
-          && !attemptedPaths.has(parentPath)
-        ? [parentPath]
-        : []
-    }),
-  )]
+  return [
+    ...new Set(
+      [...loadedByPath.values()].flatMap((session) => {
+        const parentPath = session.parentSessionPath
+        return parentPath && availablePaths.has(parentPath) && !loadedByPath.has(parentPath)
+            && !attemptedPaths.has(parentPath)
+          ? [parentPath]
+          : []
+      }),
+    ),
+  ]
 }
 
 function isNotFound(error: unknown): boolean {

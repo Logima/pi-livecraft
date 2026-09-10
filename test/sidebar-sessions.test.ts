@@ -5,6 +5,8 @@ import {
   otherWorkspacePinnedSessions,
   otherWorkspaceSessions,
   pickSessionOnOpen,
+  relatedAgentSession,
+  relatedParentSessionPaths,
   sidebarSessions,
   sidebarSessionTree,
 } from '../src/features/workspace/sidebar-sessions.ts'
@@ -106,6 +108,40 @@ test('keeps a child with an unavailable parent visible as a root session', () =>
   assert.deepEqual(sidebarSessionTree([child], '/workspace'), [
     { session: child, children: [] },
   ])
+})
+
+test('lists the parent branches needed to reveal a selected child', () => {
+  const parent = { ...persisted, sessionPath: '/sessions/parent.jsonl' }
+  const child = {
+    ...persisted,
+    sessionPath: '/sessions/child.jsonl',
+    parentSessionPath: parent.sessionPath,
+  }
+  const grandchild = {
+    ...persisted,
+    sessionPath: '/sessions/grandchild.jsonl',
+    parentSessionPath: child.sessionPath,
+  }
+
+  assert.deepEqual(relatedParentSessionPaths([parent, child, grandchild], grandchild.sessionPath), [
+    child.sessionPath,
+    parent.sessionPath,
+  ])
+})
+
+test('finds a related child from a full Agent result identifier', () => {
+  const child = {
+    ...persisted,
+    name: 'Explore#2b38211f',
+    parentSessionPath: '/sessions/parent.jsonl',
+  }
+
+  assert.equal(
+    relatedAgentSession([child], '/sessions/parent.jsonl', '2b38211f-1234-567'),
+    child,
+  )
+  assert.equal(relatedAgentSession([child], '/sessions/other.jsonl', '2b38211f'), undefined)
+  assert.equal(relatedAgentSession([child], '/sessions/parent.jsonl', 'invalid'), undefined)
 })
 
 // -- otherWorkspaceSessions ------------------------------------------------

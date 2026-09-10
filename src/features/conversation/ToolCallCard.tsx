@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { resolveFileIcon } from '../../../shared/file-icon.ts'
+import { isObject } from '../../../shared/is-object.ts'
 import type { JsonObject } from '../../../shared/types.ts'
 import { Tooltip } from '../../components/Tooltip.tsx'
 import { CopyButton } from './CopyButton.tsx'
@@ -18,7 +19,11 @@ import {
   toolWriteContent,
 } from './tool-presentation.ts'
 import { ToolCallContent, ToolCallPreview } from './ToolCallOutput.tsx'
-import { toolContentText } from './tool-protocol.ts'
+import {
+  agentExecutionStatus,
+  toolContentText,
+  type AgentExecutionStatus,
+} from './tool-protocol.ts'
 
 export { Markdown } from './Markdown.tsx'
 
@@ -42,6 +47,7 @@ function useInView(ref: RefObject<HTMLElement | null>, enabled: boolean): boolea
 }
 
 interface ToolCallCardProps {
+  agentStatuses: ReadonlyMap<string, AgentExecutionStatus>
   animateLiveChanges?: boolean
   args: unknown
   hasResult: boolean
@@ -51,6 +57,7 @@ interface ToolCallCardProps {
   name: string
   onError: (cause: unknown) => void
   onKill: () => Promise<JsonObject>
+  onOpenAgentSession: (agentId: string) => Promise<void>
   repositoryRoot?: string | null
   partialResultContent?: unknown
   resultContent?: unknown
@@ -65,6 +72,7 @@ interface ToolCallCardProps {
 
 /** Displays the official card whose full result replaces the preview when expanded. */
 export const ToolCallCard = memo(function ToolCallCard({
+  agentStatuses,
   animateLiveChanges = false,
   args,
   hasResult,
@@ -74,6 +82,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   name,
   onError,
   onKill,
+  onOpenAgentSession,
   partialResultContent,
   repositoryRoot,
   resultContent,
@@ -100,6 +109,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   const [codeRendered, setCodeRendered] = useState(false)
   const [argsExpanded, setArgsExpanded] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [openingAgentSession, setOpeningAgentSession] = useState(false)
   const cardRef = useRef<HTMLElement>(null)
   const input = formatToolData(args)
   const inputLength = toolDataLength(args)
@@ -170,6 +180,14 @@ export const ToolCallCard = memo(function ToolCallCard({
     : streamingArgs
   const renderingCode = display.kind === 'code' && canHighlightFile(content) && expanded
     && !codeRendered
+  const agentId = toolName === 'Agent' && isObject(resultDetails)
+      && typeof resultDetails.agentId === 'string'
+    ? resultDetails.agentId
+    : undefined
+  const detailStatus = isObject(resultDetails) ? resultDetails.status : undefined
+  const agentStatus = agentId
+    ? agentStatuses.get(agentId) ?? agentExecutionStatus(detailStatus)
+    : undefined
 
   /** Force-kills the active tool's child process without aborting the Pi session. */
   const stopTool = async (): Promise<void> => {
@@ -180,6 +198,19 @@ export const ToolCallCard = memo(function ToolCallCard({
       onError(cause)
     } finally {
       setStopping(false)
+    }
+  }
+
+  /** Opens the delegated session while keeping navigation errors on the current card. */
+  const openAgentSession = async (): Promise<void> => {
+    if (!agentId) return
+    setOpeningAgentSession(true)
+    try {
+      await onOpenAgentSession(agentId)
+    } catch (cause) {
+      onError(cause)
+    } finally {
+      setOpeningAgentSession(false)
     }
   }
 
@@ -216,75 +247,103 @@ export const ToolCallCard = memo(function ToolCallCard({
       data-tool-call-id={id}
       ref={cardRef}
     >
-      <Tooltip label={tooltip}>
-        <button
-          aria-expanded={semiDetailed ? semiExpanded : hasResult ? expanded : undefined}
-          className='tool-call-heading'
-          disabled={!hasResult && !semiDetailed}
-          onClick={activate}
-          type='button'
-        >
-          <span aria-hidden='true'>⌘</span>
-          <span>
-            <strong aria-label={tooltip}>{headingName}</strong>
-          </span>
-          {presentation.headerDetail && displayedCommand && (
-            <span className='tool-call-command'>
-              <code aria-label={`Full command: ${presentation.headerDetail.title}`}>
-                {displayedCommand}
-              </code>
-              {fileIcon && (
-                <span
-                  aria-hidden='true'
-                  className='tool-call-file-icon'
-                  data-color={fileIcon.color}
-                >
-                  {fileIcon.glyph}
-                </span>
-              )}
-            </span>
-          )}
-          {presentation.headerDetail?.suffix && (
-            <span className='tool-call-range'>
-              <code aria-label={`Read range: ${presentation.headerDetail.suffix}`}>
-                {presentation.headerDetail.suffix}
-              </code>
-            </span>
-          )}
-          <small
-            aria-label={hasResult && !contentError
-              ? resolvedSizeLabel
-              : partialOutput
-              ? `Output: ${partialOutputLength} characters so far`
-              : undefined}
+      <div className='tool-call-header'>
+        <Tooltip label={tooltip}>
+          <button
+            aria-expanded={semiDetailed ? semiExpanded : hasResult ? expanded : undefined}
+            className='tool-call-heading'
+            disabled={!hasResult && !semiDetailed}
+            onClick={activate}
+            type='button'
           >
-            {active && presentation.pendingDetail && `${presentation.pendingDetail} · `}
-            {hasResult
-              ? contentError
-                ? 'Failed'
-                : (
-                  <span aria-hidden='true'>
-                    ↘ {inputLength} car. · ↗ {outputLength} car.
-                    {durationLabel && ` · ⏱ ${durationLabel}`}
+            <span aria-hidden='true'>⌘</span>
+            <span>
+              <strong aria-label={tooltip}>{headingName}</strong>
+            </span>
+            {presentation.headerDetail && displayedCommand && (
+              <span className='tool-call-command'>
+                <code aria-label={`Full command: ${presentation.headerDetail.title}`}>
+                  {displayedCommand}
+                </code>
+                {fileIcon && (
+                  <span
+                    aria-hidden='true'
+                    className='tool-call-file-icon'
+                    data-color={fileIcon.color}
+                  >
+                    {fileIcon.glyph}
                   </span>
-                )
-              : interrupted
-              ? 'Generation interrupted'
-              : streaming
-              ? 'Generating…'
-              : partialOutput
-              ? <span aria-hidden='true'>↗ {partialOutputLength} car.</span>
-              : 'In progress…'}
-            {active && (
-              <span
-                aria-label={streaming ? 'Arguments are being generated' : 'Tool in progress'}
-                className='spinner tool-call-spinner'
-                role='status'
-              />
+                )}
+              </span>
             )}
-          </small>
-        </button>
-      </Tooltip>
+            {presentation.headerDetail?.suffix && (
+              <span className='tool-call-range'>
+                <code aria-label={`Read range: ${presentation.headerDetail.suffix}`}>
+                  {presentation.headerDetail.suffix}
+                </code>
+              </span>
+            )}
+            <small
+              aria-label={hasResult && !contentError
+                ? resolvedSizeLabel
+                : partialOutput
+                ? `Output: ${partialOutputLength} characters so far`
+                : undefined}
+            >
+              {active && presentation.pendingDetail && `${presentation.pendingDetail} · `}
+              {hasResult
+                ? contentError
+                  ? 'Failed'
+                  : (
+                    <span aria-hidden='true'>
+                      ↘ {inputLength} car. · ↗ {outputLength} car.
+                      {durationLabel && ` · ⏱ ${durationLabel}`}
+                    </span>
+                  )
+                : interrupted
+                ? 'Generation interrupted'
+                : streaming
+                ? 'Generating…'
+                : partialOutput
+                ? <span aria-hidden='true'>↗ {partialOutputLength} car.</span>
+                : 'In progress…'}
+              {active && (
+                <span
+                  aria-label={streaming ? 'Arguments are being generated' : 'Tool in progress'}
+                  className='spinner tool-call-spinner'
+                  role='status'
+                />
+              )}
+            </small>
+          </button>
+        </Tooltip>
+        {agentStatus && (
+          <span
+            aria-label={`Delegated agent ${agentStatus}`}
+            className={`agent-run-status ${agentStatus}`}
+            role='img'
+          >
+            <span aria-hidden='true' />
+            {agentStatus === 'running' ? 'Running' : 'Finished'}
+          </span>
+        )}
+        {agentId && (
+          <Tooltip label='Open delegated agent session'>
+            <button
+              aria-label='Open delegated agent session'
+              className='agent-session-link'
+              disabled={openingAgentSession}
+              onClick={() => void openAgentSession()}
+              type='button'
+            >
+              <span>{openingAgentSession ? 'Opening…' : 'Open'}</span>
+              <svg aria-hidden='true' fill='none' viewBox='0 0 16 16'>
+                <path d='M5 3h8v8M13 3 4 12' />
+              </svg>
+            </button>
+          </Tooltip>
+        )}
+      </div>
       <div className='conversation-actions tool-call-actions'>
         <CopyButton direction='input' label='Copy tool input' onError={onError} value={input} />
         {active && (

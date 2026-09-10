@@ -105,11 +105,11 @@ pre.conversation-code-block {
 .tool-call > .conversation-actions {
   top: 5px;
 }
-.tool-call:has(> .conversation-actions) > .tool-call-heading {
+.tool-call:has(> .conversation-actions) > .tool-call-header {
   padding-right: 80px;
 }
 .tool-call:has(> .conversation-actions > .open-file-action)
-  > .tool-call-heading {
+  > .tool-call-header {
   padding-right: 112px;
 }
 @media (hover: hover) {
