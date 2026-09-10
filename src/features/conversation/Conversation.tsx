@@ -45,6 +45,7 @@ export function Conversation(
     toolDurations,
     toolExecutions,
     workingDirectory,
+    onKillTool,
     onError,
     onFork,
   }: {
@@ -60,6 +61,7 @@ export function Conversation(
     toolDurations: ReadonlyMap<string, number>
     toolExecutions: ToolExecution[]
     workingDirectory: string
+    onKillTool: (toolCallId: string) => Promise<JsonObject>
     onError: (cause: unknown) => void
     onFork: (entryId: string) => Promise<boolean>
   },
@@ -370,6 +372,7 @@ export function Conversation(
                       interrupted={execution?.status === 'interrupted'}
                       key={call.id}
                       name={call.name}
+                      onKill={() => onKillTool(call.id)}
                       onError={onError}
                       partialResultContent={execution?.partialResult?.content}
                       repositoryRoot={repositoryRoot}
@@ -429,6 +432,7 @@ export function Conversation(
                     name={part
                       .call
                       .name}
+                    onKill={() => onKillTool(part.call.id)}
                     onError={onError}
                     partialResultContent={execution?.partialResult?.content}
                     repositoryRoot={repositoryRoot}
@@ -460,6 +464,7 @@ export function Conversation(
               interrupted={execution.status === 'interrupted'}
               key={execution.id}
               name={execution.name}
+              onKill={() => onKillTool(execution.id)}
               onError={onError}
               partialResultContent={execution.partialResult?.content}
               repositoryRoot={repositoryRoot}

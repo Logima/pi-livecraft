@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { resolveFileIcon } from '../../../shared/file-icon.ts'
+import type { JsonObject } from '../../../shared/types.ts'
 import { Tooltip } from '../../components/Tooltip.tsx'
 import { CopyButton } from './CopyButton.tsx'
 import { canHighlightFile } from './file-preview.ts'
@@ -49,6 +50,7 @@ interface ToolCallCardProps {
   interrupted?: boolean
   name: string
   onError: (cause: unknown) => void
+  onKill: () => Promise<JsonObject>
   repositoryRoot?: string | null
   partialResultContent?: unknown
   resultContent?: unknown
@@ -71,6 +73,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   interrupted = false,
   name,
   onError,
+  onKill,
   partialResultContent,
   repositoryRoot,
   resultContent,
@@ -96,6 +99,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   const [partialOutputExpanded, setPartialOutputExpanded] = useState(false)
   const [codeRendered, setCodeRendered] = useState(false)
   const [argsExpanded, setArgsExpanded] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const cardRef = useRef<HTMLElement>(null)
   const input = formatToolData(args)
   const inputLength = toolDataLength(args)
@@ -166,6 +170,18 @@ export const ToolCallCard = memo(function ToolCallCard({
     : streamingArgs
   const renderingCode = display.kind === 'code' && canHighlightFile(content) && expanded
     && !codeRendered
+
+  /** Force-kills the active tool's child process without aborting the Pi session. */
+  const stopTool = async (): Promise<void> => {
+    setStopping(true)
+    try {
+      await onKill()
+    } catch (cause) {
+      onError(cause)
+    } finally {
+      setStopping(false)
+    }
+  }
 
   useEffect(() => {
     if (!expanded || display.kind !== 'code' || codeRendered) return
@@ -271,6 +287,21 @@ export const ToolCallCard = memo(function ToolCallCard({
       </Tooltip>
       <div className='conversation-actions tool-call-actions'>
         <CopyButton direction='input' label='Copy tool input' onError={onError} value={input} />
+        {active && (
+          <Tooltip label='Kill tool process'>
+            <button
+              aria-label='Kill tool process'
+              className='conversation-action-button danger'
+              disabled={stopping}
+              onClick={() => void stopTool()}
+              type='button'
+            >
+              <svg aria-hidden='true' viewBox='0 0 16 16'>
+                <rect height='8' rx='1.5' width='8' x='4' y='4' />
+              </svg>
+            </button>
+          </Tooltip>
+        )}
         {hasResult && (
           <CopyButton
             direction='output'

@@ -53,6 +53,7 @@ interface ManagedSession {
   switching: boolean
   bufferedEvents: JsonObject[]
   idleSince: number | undefined
+  activeToolCallId: string | undefined
 }
 
 const server = createServer((socket) => {
@@ -335,6 +336,7 @@ async function startSession(summary: SessionSummary): Promise<void> {
     switching: false,
     bufferedEvents: [],
     idleSince: undefined,
+    activeToolCallId: undefined,
   }
 
   sessions.set(summary.id, session)
@@ -531,6 +533,15 @@ async function sendCommand(request: ManagerRequest): Promise<JsonObject> {
   if (session.switching && request.command.type !== 'extension_ui_response')
     throw new Error('Pi session is switching')
 
+  if (request.command.type === 'kill_tool') {
+    if (typeof request.command.toolCallId !== 'string')
+      throw new Error('Tool call id is required')
+    if (session.activeToolCallId !== request.command.toolCallId)
+      throw new Error('Tool call is no longer active')
+    const killed = await session.pi.killToolProcesses()
+    return { success: true, killed }
+  }
+
   if (request.command.type === 'extension_ui_response') {
     if (typeof request.command.id === 'string') session.pendingUi.delete(request.command.id)
     session.pi.send(request.command)
@@ -573,7 +584,14 @@ function handlePiEvent(session: ManagedSession, event: JsonObject): void {
       : 'New session'
   }
   if (event.type === 'agent_start') markSessionRunning(session)
-  if (event.type === 'agent_settled') markSessionIdle(session, true)
+  if (event.type === 'agent_settled') {
+    session.activeToolCallId = undefined
+    markSessionIdle(session, true)
+  }
+  if (event.type === 'tool_execution_start' && typeof event.toolCallId === 'string')
+    session.activeToolCallId = event.toolCallId
+  if (event.type === 'tool_execution_end' && event.toolCallId === session.activeToolCallId)
+    session.activeToolCallId = undefined
   if (
     event.type === 'extension_ui_request' && event.method === 'setStatus'
     && event.statusKey === 'agent'

@@ -822,6 +822,11 @@ function App() {
   const handleComposerAbort = useCallback(() => sendPiCommand(selectedId, { type: 'abort' }), [
     selectedId,
   ])
+  /** Force-kills descendants of the Pi process that belong to a stuck tool call. */
+  const handleToolKill = useCallback(
+    (toolCallId: string) => sendPiCommand(selectedId, { type: 'kill_tool', toolCallId }),
+    [selectedId],
+  )
   const handlePromptImprovement = useCallback(
     (prompt: string, direction?: string) => improvePrompt(selectedId, prompt, direction),
     [selectedId],
@@ -1169,6 +1174,7 @@ function App() {
                     liveMessages={liveMessages}
                     messages={snapshot.messages}
                     navigationRequest={conversationNavigation}
+                    onKillTool={handleToolKill}
                     onError={handleConversationError}
                     onFork={handleForkConversation}
                     pendingSteering={pendingSteering}

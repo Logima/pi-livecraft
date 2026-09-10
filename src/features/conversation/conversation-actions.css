@@ -39,6 +39,22 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+.conversation-action-button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--surface);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--danger) 72%, black);
+}
+.conversation-action-button.danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 86%, var(--ink));
+  background: color-mix(in srgb, var(--danger) 86%, var(--ink));
+}
+.conversation-action-button.danger:focus-visible {
+  border-color: var(--danger);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent),
+    0 2px 0 color-mix(in srgb, var(--danger) 72%, black);
+}
 .conversation-action-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

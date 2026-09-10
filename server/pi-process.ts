@@ -1,8 +1,9 @@
-import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { execFile, spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { JsonLineDecoder, MAX_SESSION_RECORD_SIZE, encodeJsonLine } from './jsonl.ts'
 import { resolvePiLauncher } from './pi-launcher.ts'
@@ -10,6 +11,7 @@ import type { JsonObject } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
 
 const activeChildren = new Set<ChildProcessWithoutNullStreams>()
+const execFileAsync = promisify(execFile)
 
 /** Dedicated Pi profile directory for isolated prompts so model/thinking defaults never leak into the user's main config. */
 export const ISOLATED_AGENT_DIR = join(homedir(), '.pi', 'livecraft-isolated')
@@ -142,6 +144,22 @@ export class PiProcess extends EventEmitter {
     await terminateChild(this.child, graceMs)
   }
 
+  /** Force-kills processes spawned by the current Pi process without killing Pi itself. */
+  async killToolProcesses(): Promise<number> {
+    if (process.platform === 'win32')
+      throw new Error('Killing an individual tool is not supported on Windows')
+    if (this.child.pid === undefined) throw new Error('Pi process has no PID')
+    const pids = await descendantPids(this.child.pid)
+    for (const pid of pids) {
+      try {
+        process.kill(pid, 'SIGKILL')
+      } catch (error) {
+        if (!isProcessGone(error)) throw error
+      }
+    }
+    return pids.length
+  }
+
   /** Distinguishes expected responses from asynchronous events emitted by Pi. */
   #receive(value: unknown): void {
     if (!isObject(value)) return
@@ -173,6 +191,34 @@ export class PiProcess extends EventEmitter {
 /** Terminates every tracked Pi child and waits for their bounded cleanup. */
 export async function terminateAllPiProcesses(graceMs = 2_000): Promise<void> {
   await Promise.all([...activeChildren].map((child) => terminateChild(child, graceMs)))
+}
+
+/** Returns every living descendant of a process, excluding the root itself. */
+async function descendantPids(rootPid: number): Promise<number[]> {
+  const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,ppid='], { timeout: 1_000 })
+  const children = new Map<number, number[]>()
+  for (const line of stdout.split('\n')) {
+    const [pidText, parentText] = line.trim().split(/\s+/)
+    const pid = Number(pidText)
+    const parentPid = Number(parentText)
+    if (!Number.isInteger(pid) || !Number.isInteger(parentPid)) continue
+    const siblings = children.get(parentPid) ?? []
+    siblings.push(pid)
+    children.set(parentPid, siblings)
+  }
+  const descendants: number[] = []
+  const pending = [...(children.get(rootPid) ?? [])]
+  while (pending.length > 0) {
+    const pid = pending.pop()
+    if (pid === undefined) continue
+    descendants.push(pid)
+    pending.push(...(children.get(pid) ?? []))
+  }
+  return descendants
+}
+
+function isProcessGone(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ESRCH'
 }
 
 async function terminateChild(
