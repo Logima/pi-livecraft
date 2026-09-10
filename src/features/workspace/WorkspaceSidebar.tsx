@@ -15,9 +15,10 @@ import { SessionStatusIndicator } from './SessionStatusIndicator.tsx'
 import {
   otherWorkspacePinnedSessions,
   otherWorkspaceSessions,
-  sidebarSessions,
+  sidebarSessionTree,
   type PinnedSession,
   type SessionActionTarget,
+  type SidebarSessionNode,
 } from './sidebar-sessions.ts'
 import { SessionRenameDialog } from './SessionRenameDialog.tsx'
 import { maxWorkspaceSidebarWidth, minWorkspaceSidebarWidth } from './workspace-sidebar.ts'
@@ -83,6 +84,7 @@ export function WorkspaceSidebar({
   onError,
 }: WorkspaceSidebarProps) {
   const [openingSessionPath, setOpeningSessionPath] = useState('')
+  const [expandedSessionPaths, setExpandedSessionPaths] = useState<ReadonlySet<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState({ left: 0, top: 0 })
   const [renameTarget, setRenameTarget] = useState<SessionActionTarget | null>(null)
@@ -101,8 +103,13 @@ export function WorkspaceSidebar({
     ),
     [sessions],
   )
-  const visibleSessions = useMemo(
-    () => sidebarSessions(recentSessions, workspacePath, sentSessions, activeSessionPaths),
+  const sessionTree = useMemo(
+    () => sidebarSessionTree(
+      recentSessions,
+      workspacePath,
+      sentSessions,
+      activeSessionPaths,
+    ),
     [activeSessionPaths, recentSessions, sentSessions, workspacePath],
   )
   const otherSessions = useMemo(
@@ -123,7 +130,7 @@ export function WorkspaceSidebar({
 
   useEffect(() => {
     selectedSessionRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [selectedId, visibleSessions])
+  }, [selectedId, sessionTree])
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return
@@ -259,6 +266,99 @@ export function WorkspaceSidebar({
     }
   }
 
+  /** Renders one related-session branch while retaining the existing row actions. */
+  function renderSessionNode(node: SidebarSessionNode) {
+    const { session: recentSession } = node
+    const activeSession = sessions.find((session) =>
+      session.sessionPath === recentSession.sessionPath && session.status !== 'exited'
+    )
+    const indicator = sessionIndicator(
+      activeSession,
+      selectedId,
+      compactingSessionIds,
+      completedSessionIds,
+    )
+    const isPinned = pinnedSessionPaths.has(recentSession.sessionPath)
+    const isExpanded = expandedSessionPaths.has(recentSession.sessionPath)
+    const displayName = recentSession.displayName ?? recentSession.name
+    const sessionLabel = openingSessionPath === recentSession.sessionPath
+      ? 'Opening…'
+      : displayName
+    const actionTarget: SessionActionTarget = {
+      cwd: recentSession.cwd,
+      name: recentSession.name,
+      sessionId: activeSession?.id,
+      sessionPath: recentSession.sessionPath,
+    }
+    return (
+      <div className='session-tree-node' key={recentSession.sessionPath}>
+        <div className='session-tree-row'>
+          {node.children.length > 0
+            ? (
+              <button
+                aria-expanded={isExpanded}
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.children.length} related ${
+                  node.children.length === 1 ? 'session' : 'sessions'
+                } for ${displayName}`}
+                className={`session-tree-toggle${isExpanded ? ' expanded' : ''}`}
+                onClick={() =>
+                  setExpandedSessionPaths((current) => {
+                    const next = new Set(current)
+                    if (next.has(recentSession.sessionPath)) next.delete(recentSession.sessionPath)
+                    else next.add(recentSession.sessionPath)
+                    return next
+                  })}
+                type='button'
+              >
+                <ChevronIcon />
+                <span>{node.children.length}</span>
+              </button>
+            )
+            : <span aria-hidden='true' className='session-tree-spacer' />}
+          <Tooltip
+            hint='Right-click to pin, rename, or close the session'
+            label={`${displayName}\n${
+              new Date(recentSession.updatedAt).toLocaleString('en-US', { hourCycle: 'h23' })
+            }`}
+          >
+            <button
+              className={`session-item${activeSession?.id === selectedId ? ' selected' : ''}${
+                indicator ? ` ${indicator}` : ''
+              }${isPinned ? ' pinned' : ''}`}
+              aria-haspopup='menu'
+              disabled={openingSessionPath === recentSession.sessionPath}
+              onContextMenu={(event) => openContextMenu(actionTarget, event)}
+              onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
+              onClick={() => {
+                if (activeSession) {
+                  onSelectSession(activeSession.id)
+                  return
+                }
+                setOpeningSessionPath(recentSession.sessionPath)
+                void onOpenSession(recentSession).catch(onError).finally(() =>
+                  setOpeningSessionPath('')
+                )
+              }}
+              ref={activeSession?.id === selectedId ? selectedSessionRef : undefined}
+              type='button'
+            >
+              {indicator && <SessionStatusIndicator status={indicator} />}
+              {isPinned && <PinIcon />}
+              <span>
+                <strong>{sessionLabel}</strong>
+              </span>
+            </button>
+          </Tooltip>
+        </div>
+        {isExpanded && node.children.length > 0 && (
+          <div className='session-tree-children'>
+            {node.children.map(renderSessionNode)}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const contextMenuSessionPath = contextMenu?.target.sessionPath
   const contextMenuIsPinned = contextMenuSessionPath !== undefined
     && pinnedSessionPaths.has(contextMenuSessionPath)
@@ -340,68 +440,11 @@ export function WorkspaceSidebar({
       </div>
       <NewSessionButton onCreate={onCreate} onError={onError} />
       <nav className='session-list' aria-label='Recent Pi sessions'>
-        {isRefreshing && visibleSessions.length === 0 && (
+        {isRefreshing && sessionTree.length === 0 && (
           <p className='session-list-loading' role='status'>Loading sessions…</p>
         )}
-        {visibleSessions.map((recentSession) => {
-          const activeSession = sessions.find((session) =>
-            session.sessionPath === recentSession.sessionPath && session.status !== 'exited'
-          )
-          const indicator = sessionIndicator(
-            activeSession,
-            selectedId,
-            compactingSessionIds,
-            completedSessionIds,
-          )
-          const isPinned = pinnedSessionPaths.has(recentSession.sessionPath)
-          const sessionLabel = openingSessionPath === recentSession.sessionPath
-            ? 'Opening…'
-            : recentSession.name
-          const actionTarget: SessionActionTarget = {
-            cwd: recentSession.cwd,
-            name: recentSession.name,
-            sessionId: activeSession?.id,
-            sessionPath: recentSession.sessionPath,
-          }
-          return (
-            <Tooltip
-              key={recentSession.sessionPath}
-              hint='Right-click to pin, rename, or close the session'
-              label={`${recentSession.name}\n${
-                new Date(recentSession.updatedAt).toLocaleString('en-US', { hourCycle: 'h23' })
-              }`}
-            >
-              <button
-                className={`session-item${activeSession?.id === selectedId ? ' selected' : ''}${
-                  indicator ? ` ${indicator}` : ''
-                }${isPinned ? ' pinned' : ''}`}
-                aria-haspopup='menu'
-                disabled={openingSessionPath === recentSession.sessionPath}
-                onContextMenu={(event) => openContextMenu(actionTarget, event)}
-                onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
-                onClick={() => {
-                  if (activeSession) {
-                    onSelectSession(activeSession.id)
-                    return
-                  }
-                  setOpeningSessionPath(recentSession.sessionPath)
-                  void onOpenSession(recentSession).catch(onError).finally(() =>
-                    setOpeningSessionPath('')
-                  )
-                }}
-                ref={activeSession?.id === selectedId ? selectedSessionRef : undefined}
-                type='button'
-              >
-                {indicator && <SessionStatusIndicator status={indicator} />}
-                {isPinned && <PinIcon />}
-                <span>
-                  <strong>{sessionLabel}</strong>
-                </span>
-              </button>
-            </Tooltip>
-          )
-        })}
-        {visibleSessions.length === 0 && !isRefreshing && (
+        {sessionTree.map(renderSessionNode)}
+        {sessionTree.length === 0 && !isRefreshing && (
           <p className='empty-sidebar'>No Pi sessions in this directory.</p>
         )}
       </nav>

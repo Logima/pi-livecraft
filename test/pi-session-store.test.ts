@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises'
+import { appendFile, mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import test from 'node:test'
@@ -118,6 +118,77 @@ test('uses the first non-command user prompt and hides sessions without messages
   assert.equal(recent[0].name, 'One two three four five six seven eight…')
 })
 
+test('returns generated and user-created child sessions with their parent relationship', async () => {
+  const { directory, workspace } = await fixture()
+  const parentPath = join(directory, 'parent.jsonl')
+  await writeSession(parentPath, workspace, 'parent', 'Parent session')
+  await appendFile(
+    parentPath,
+    `\n${JSON.stringify({
+      type: 'message',
+      timestamp: '2026-07-19T10:02:00.000Z',
+      message: {
+        role: 'toolResult',
+        toolCallId: 'call-agent',
+        toolName: 'Agent',
+        content: [{ type: 'text', text: 'Agent completed' }],
+        details: {
+          agentId: '2b38211f-1234-567',
+          description: 'Explore session metadata',
+        },
+        isError: false,
+      },
+    })}`,
+  )
+  await Promise.all([
+    writeChildSession(
+      join(directory, 'agent-child.jsonl'),
+      workspace,
+      parentPath,
+      'agent-child',
+      'Explore#2b38211f',
+    ),
+    writeChildSession(
+      join(directory, 'user-child.jsonl'),
+      workspace,
+      parentPath,
+      'user-child',
+      'User-created fork',
+    ),
+  ])
+
+  const recent = await listRecentPiSessions(workspace, directory)
+  assert.deepEqual(
+    new Set(recent.map(({ id }) => id)),
+    new Set(['parent', 'agent-child', 'user-child']),
+  )
+  const canonicalParentPath = await realpath(parentPath)
+  const agentChild = recent.find(({ id }) => id === 'agent-child')
+  assert.equal(agentChild?.parentSessionPath, canonicalParentPath)
+  assert.equal(agentChild?.displayName, 'Explore session metadata')
+  assert.equal(recent.find(({ id }) => id === 'user-child')?.parentSessionPath, canonicalParentPath)
+})
+
+test('limits top-level sessions without allowing children to displace their parent', async () => {
+  const { directory, workspace } = await fixture()
+  const parentPath = join(directory, 'parent.jsonl')
+  await writeSession(parentPath, workspace, 'parent', 'Parent session')
+  await Promise.all(
+    Array.from({ length: 31 }, (_, index) =>
+      writeChildSession(
+        join(directory, `child-${index}.jsonl`),
+        workspace,
+        parentPath,
+        `child-${index}`,
+        `Agent ${index}`,
+      )),
+  )
+
+  const recent = await listRecentPiSessions(workspace, directory)
+  assert.equal(recent.length, 32)
+  assert.ok(recent.some(({ id }) => id === 'parent'))
+})
+
 test('reads the newest entry of a large session file even when it exceeds one tail chunk', async () => {
   const { directory, workspace } = await fixture()
   // Middle history large enough that the head+tail path is taken and real bytes are skipped.
@@ -160,6 +231,34 @@ test('reads the newest entry of a large session file even when it exceeds one ta
   // updatedAt reflects the final entry's timestamp; if it were ignored, this would fall back to 09:00.
   assert.equal(recent[0].updatedAt, Date.parse('2026-07-19T11:00:00.000Z'))
 })
+
+async function writeChildSession(
+  path: string,
+  cwd: string,
+  parentSession: string,
+  id: string,
+  name: string,
+): Promise<void> {
+  await writeFile(
+    path,
+    [
+      JSON.stringify({
+        type: 'session',
+        version: 3,
+        id,
+        timestamp: '2026-07-19T10:00:00.000Z',
+        cwd,
+        parentSession,
+      }),
+      JSON.stringify({ type: 'session_info', name }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-07-19T10:01:00.000Z',
+        message: { role: 'user', content: name },
+      }),
+    ].join('\n'),
+  )
+}
 
 async function writeSession(
   path: string,

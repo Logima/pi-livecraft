@@ -114,6 +114,26 @@ test('extracts a usable file path from read and write calls', () => {
   assert.equal(toolFilePath({}), null)
 })
 
+test('shows the delegated agent description in the tool header', () => {
+  assert.deepEqual(
+    toolCallPresentation({
+      id: 'call-agent',
+      name: 'Agent',
+      args: { description: 'Inspect session metadata', subagent_type: 'Explore' },
+    }),
+    {
+      headerDetail: {
+        text: 'Inspect session metadata',
+        title: 'Inspect session metadata',
+      },
+    },
+  )
+  assert.deepEqual(
+    toolCallPresentation({ id: 'call-agent-invalid', name: 'Agent', args: {} }),
+    {},
+  )
+})
+
 test('uses the Bash presentation while preserving the generic fallback', () => {
   const command = 'a'.repeat(81)
   assert.deepEqual(

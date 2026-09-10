@@ -6,6 +6,7 @@ import {
   otherWorkspaceSessions,
   pickSessionOnOpen,
   sidebarSessions,
+  sidebarSessionTree,
 } from '../src/features/workspace/sidebar-sessions.ts'
 
 const persisted: RecentSession = {
@@ -55,6 +56,29 @@ test('orders sessions by their latest activity', () => {
   assert.deepEqual(sidebarSessions([older, newer], '/workspace'), [newer, older])
 })
 
+test('groups arbitrarily named child sessions beneath their parent', () => {
+  const olderRoot = { ...persisted, updatedAt: 100 }
+  const child = {
+    ...persisted,
+    id: 'child-id',
+    name: 'Explore#2b38211f',
+    sessionPath: '/sessions/child.jsonl',
+    parentSessionPath: persisted.sessionPath,
+    updatedAt: 300,
+  }
+  const newerRoot = {
+    ...persisted,
+    id: 'newer-root',
+    sessionPath: '/sessions/newer-root.jsonl',
+    updatedAt: 200,
+  }
+
+  assert.deepEqual(sidebarSessionTree([olderRoot, child, newerRoot], '/workspace'), [
+    { session: olderRoot, children: [{ session: child, children: [] }] },
+    { session: newerRoot, children: [] },
+  ])
+})
+
 test('puts active sessions before inactive sessions', () => {
   const inactive = { ...persisted, updatedAt: 900 }
   const active = {
@@ -65,9 +89,23 @@ test('puts active sessions before inactive sessions', () => {
   }
 
   assert.deepEqual(
-    sidebarSessions([inactive, active], '/workspace', [], new Set([active.sessionPath])),
-    [active, inactive],
+    sidebarSessionTree([inactive, active], '/workspace', [], new Set([active.sessionPath])),
+    [
+      { session: active, children: [] },
+      { session: inactive, children: [] },
+    ],
   )
+})
+
+test('keeps a child with an unavailable parent visible as a root session', () => {
+  const child = {
+    ...persisted,
+    parentSessionPath: '/sessions/another-workspace.jsonl',
+  }
+
+  assert.deepEqual(sidebarSessionTree([child], '/workspace'), [
+    { session: child, children: [] },
+  ])
 })
 
 // -- otherWorkspaceSessions ------------------------------------------------

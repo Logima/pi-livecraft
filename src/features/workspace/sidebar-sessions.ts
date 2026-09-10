@@ -10,12 +10,16 @@ export interface SessionActionTarget {
 
 export type PinnedSession = Pick<RecentSession, 'cwd' | 'name' | 'sessionPath'>
 
+export interface SidebarSessionNode {
+  session: RecentSession
+  children: SidebarSessionNode[]
+}
+
 /** Adds pending sessions and orders the visible list by latest activity. */
 export function sidebarSessions(
   recentSessions: RecentSession[],
   workspacePath: string,
   sentSessions: RecentSession[] = [],
-  activeSessionPaths: ReadonlySet<string> = new Set(),
 ): RecentSession[] {
   const recentIds = new Set(recentSessions.map((session) => session.id))
   const recentPaths = new Set(recentSessions.map((session) => session.sessionPath))
@@ -24,11 +28,59 @@ export function sidebarSessions(
   )
   return [...pending, ...recentSessions]
     .filter(({ cwd }) => cwd === workspacePath)
-    .sort((left, right) => {
-      const activeOrder = Number(activeSessionPaths.has(right.sessionPath))
-        - Number(activeSessionPaths.has(left.sessionPath))
-      return activeOrder || right.updatedAt - left.updatedAt
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+}
+
+/** Groups child sessions beneath their persisted parent without relying on generated names. */
+export function sidebarSessionTree(
+  recentSessions: RecentSession[],
+  workspacePath: string,
+  sentSessions: RecentSession[] = [],
+  activeSessionPaths: ReadonlySet<string> = new Set(),
+): SidebarSessionNode[] {
+  const visible = sidebarSessions(recentSessions, workspacePath, sentSessions)
+  const nodesByPath = new Map<string, SidebarSessionNode>(
+    visible.map((session) => [session.sessionPath, { session, children: [] }]),
+  )
+  const roots: SidebarSessionNode[] = []
+  for (const node of nodesByPath.values()) {
+    const parentPath = node.session.parentSessionPath
+    const parent = parentPath && !wouldCreateSessionCycle(node.session, parentPath, nodesByPath)
+      ? nodesByPath.get(parentPath)
+      : undefined
+    if (parent) parent.children.push(node)
+    else roots.push(node)
+  }
+
+  const latestActivity = (node: SidebarSessionNode): number =>
+    Math.max(node.session.updatedAt, ...node.children.map(latestActivity))
+  const hasActiveSession = (node: SidebarSessionNode): boolean =>
+    activeSessionPaths.has(node.session.sessionPath) || node.children.some(hasActiveSession)
+  const sortByActivity = (nodes: SidebarSessionNode[]): void => {
+    nodes.sort((left, right) => {
+      const activeOrder = Number(hasActiveSession(right)) - Number(hasActiveSession(left))
+      return activeOrder || latestActivity(right) - latestActivity(left)
     })
+    for (const node of nodes) sortByActivity(node.children)
+  }
+  sortByActivity(roots)
+  return roots
+}
+
+/** Prevents malformed parent links from creating an unrenderable recursive tree. */
+function wouldCreateSessionCycle(
+  session: RecentSession,
+  parentPath: string,
+  nodesByPath: ReadonlyMap<string, SidebarSessionNode>,
+): boolean {
+  const visited = new Set([session.sessionPath])
+  let path: string | undefined = parentPath
+  while (path) {
+    if (visited.has(path)) return true
+    visited.add(path)
+    path = nodesByPath.get(path)?.session.parentSessionPath
+  }
+  return false
 }
 
 /** Picks the next visible active session after closing the selected one. */

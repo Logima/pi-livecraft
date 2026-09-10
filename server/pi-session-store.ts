@@ -1,3 +1,4 @@
+import { createReadStream } from 'node:fs'
 import { open, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -23,6 +24,7 @@ interface PiSessionHeader {
   id: string
   timestamp: string
   cwd: string
+  parentSession?: string
 }
 
 const MAX_SESSIONS = 30
@@ -30,6 +32,13 @@ const CANDIDATE_BUFFER = 100
 const HEAD_CHUNK_BYTES = 64 * 1024
 const TAIL_CHUNK_BYTES = 64 * 1024
 const TAIL_SCAN_BUDGET = 2 * 1024 * 1024
+
+interface AgentDescriptionCacheEntry {
+  descriptions: Map<string, string>
+  offset: number
+}
+
+const agentDescriptionCache = new Map<string, AgentDescriptionCacheEntry>()
 
 /** Reads only the metadata required to resume a Pi session. */
 export async function listRecentPiSessions(
@@ -49,11 +58,70 @@ export async function listRecentPiSessions(
   const sessions = await Promise.all(
     candidates.map(({ path, mtime }) => readPiSession(path, mtime)),
   )
+  const loadedByPath = new Map(
+    sessions.flatMap((session) => session ? [[session.sessionPath, session] as const] : []),
+  )
+  const availablePaths = new Set(paths)
+  const attemptedParentPaths = new Set<string>()
+  let missingParentPaths = parentPathsToLoad(loadedByPath, availablePaths, attemptedParentPaths)
+  while (missingParentPaths.length > 0) {
+    for (const path of missingParentPaths) attemptedParentPaths.add(path)
+    const parents = await Promise.all(
+      missingParentPaths.map(async (path) => readPiSession(path, (await stat(path)).mtimeMs)),
+    )
+    for (const parent of parents) {
+      if (parent) loadedByPath.set(parent.sessionPath, parent)
+    }
+    missingParentPaths = parentPathsToLoad(loadedByPath, availablePaths, attemptedParentPaths)
+  }
 
-  return sessions
-    .filter((session): session is RecentSession => session?.cwd === cwd)
-    .sort((left, right) => right.updatedAt - left.updatedAt)
+  const workspaceSessions = [...loadedByPath.values()].filter((session) => session.cwd === cwd)
+  const workspacePaths = new Set(workspaceSessions.map((session) => session.sessionPath))
+  // A busy child keeps its collapsed root recent even when the parent's own file is older.
+  const latestActivityByPath = new Map(
+    workspaceSessions.map((session) => [session.sessionPath, session.updatedAt]),
+  )
+  for (const session of workspaceSessions) {
+    const visited = new Set<string>()
+    let parentPath = session.parentSessionPath
+    while (parentPath && workspacePaths.has(parentPath) && !visited.has(parentPath)) {
+      visited.add(parentPath)
+      latestActivityByPath.set(
+        parentPath,
+        Math.max(latestActivityByPath.get(parentPath) ?? 0, session.updatedAt),
+      )
+      parentPath = loadedByPath.get(parentPath)?.parentSessionPath
+    }
+  }
+  const rootPaths = workspaceSessions
+    .filter((session) =>
+      !session.parentSessionPath || !workspacePaths.has(session.parentSessionPath)
+    )
+    .sort((left, right) =>
+      (latestActivityByPath.get(right.sessionPath) ?? right.updatedAt)
+      - (latestActivityByPath.get(left.sessionPath) ?? left.updatedAt)
+    )
     .slice(0, MAX_SESSIONS)
+    .map((session) => session.sessionPath)
+  const includedPaths = new Set(rootPaths)
+  let addedChild = true
+  while (addedChild) {
+    addedChild = false
+    for (const session of workspaceSessions) {
+      if (
+        !includedPaths.has(session.sessionPath)
+        && session.parentSessionPath
+        && includedPaths.has(session.parentSessionPath)
+      ) {
+        includedPaths.add(session.sessionPath)
+        addedChild = true
+      }
+    }
+  }
+  const selectedSessions = workspaceSessions
+    .filter((session) => includedPaths.has(session.sessionPath))
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+  return addRelatedSessionDisplayNames(selectedSessions)
 }
 
 /** Verifies that a file belongs to the Pi session directory before loading its metadata. */
@@ -135,12 +203,21 @@ async function readPiSession(path: string, updatedAt: number): Promise<RecentSes
     }
   }
   if (!hasMessage) return null
+  let parentSessionPath: string | undefined
+  if (header.parentSession) {
+    try {
+      parentSessionPath = await realpath(header.parentSession)
+    } catch {
+      parentSessionPath = header.parentSession
+    }
+  }
   const createdAt = Date.parse(header.timestamp)
   return {
     id: header.id,
     cwd,
     name: name || prompt || 'New session',
     sessionPath: canonicalPath,
+    parentSessionPath,
     updatedAt: lastMessageAt ?? (Number.isNaN(createdAt) ? updatedAt : createdAt),
   }
 }
@@ -186,7 +263,13 @@ function parseHeader(line: string | undefined): PiSessionHeader | null {
     !value || value.type !== 'session' || typeof value.id !== 'string'
     || typeof value.timestamp !== 'string' || typeof value.cwd !== 'string'
   ) return null
-  return { type: 'session', id: value.id, timestamp: value.timestamp, cwd: value.cwd }
+  return {
+    type: 'session',
+    id: value.id,
+    timestamp: value.timestamp,
+    cwd: value.cwd,
+    parentSession: typeof value.parentSession === 'string' ? value.parentSession : undefined,
+  }
 }
 
 function parseLine(line: string | undefined): Record<string, unknown> | null {
@@ -215,6 +298,103 @@ function shortenPrompt(prompt: string): string {
   const words = prompt.split(/\s+/)
   return words.length > 8 ? `${words.slice(0, 8).join(' ')}…` : prompt
 }
+
+/** Uses the Agent tool's short description for generated child-session labels. */
+async function addRelatedSessionDisplayNames(
+  sessions: RecentSession[],
+): Promise<RecentSession[]> {
+  const childrenByParent = new Map<string, RecentSession[]>()
+  const sessionPaths = new Set(sessions.map((session) => session.sessionPath))
+  for (const session of sessions) {
+    if (
+      !session.parentSessionPath || !sessionPaths.has(session.parentSessionPath)
+      || !generatedAgentId(session.name)
+    ) continue
+    const siblings = childrenByParent.get(session.parentSessionPath) ?? []
+    siblings.push(session)
+    childrenByParent.set(session.parentSessionPath, siblings)
+  }
+
+  const displayNames = new Map<string, string>()
+  await Promise.all([...childrenByParent].map(async ([parentPath, children]) => {
+    const descriptions = await readAgentDescriptions(parentPath)
+    for (const child of children) {
+      const agentId = generatedAgentId(child.name)
+      const description = agentId ? descriptions.get(agentId) : undefined
+      if (description) displayNames.set(child.sessionPath, description)
+    }
+  }))
+  return sessions.map((session) => {
+    const displayName = displayNames.get(session.sessionPath)
+    return displayName ? { ...session, displayName } : session
+  })
+}
+
+/** Incrementally indexes Agent result metadata without loading large parent histories into memory. */
+async function readAgentDescriptions(parentPath: string): Promise<Map<string, string>> {
+  const size = (await stat(parentPath)).size
+  let cached = agentDescriptionCache.get(parentPath)
+  if (!cached || size < cached.offset) {
+    cached = { descriptions: new Map(), offset: 0 }
+    agentDescriptionCache.set(parentPath, cached)
+  }
+  if (size === cached.offset) return cached.descriptions
+
+  let pending = Buffer.alloc(0)
+  let consumedOffset = cached.offset
+  for await (const chunk of createReadStream(parentPath, { start: cached.offset })) {
+    pending = Buffer.concat([pending, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)])
+    let newlineIndex = pending.indexOf(0x0a)
+    while (newlineIndex >= 0) {
+      indexAgentDescription(pending.subarray(0, newlineIndex).toString('utf8'), cached.descriptions)
+      consumedOffset += newlineIndex + 1
+      pending = pending.subarray(newlineIndex + 1)
+      newlineIndex = pending.indexOf(0x0a)
+    }
+  }
+  if (pending.length > 0 && indexAgentDescription(pending.toString('utf8'), cached.descriptions)) {
+    consumedOffset += pending.length
+  }
+  cached.offset = consumedOffset
+  return cached.descriptions
+}
+
+/** Indexes one complete Agent result line and reports whether it was valid JSON. */
+function indexAgentDescription(line: string, descriptions: Map<string, string>): boolean {
+  const entry = parseLine(line)
+  if (!entry) return false
+  if (entry.type !== 'message' || !isObject(entry.message)) return true
+  const message = entry.message
+  if (message.role !== 'toolResult' || message.toolName !== 'Agent' || !isObject(message.details))
+    return true
+  const { agentId, description } = message.details
+  if (typeof agentId === 'string' && typeof description === 'string' && description.trim()) {
+    descriptions.set(agentId.slice(0, 8), description.trim())
+  }
+  return true
+}
+
+function generatedAgentId(name: string): string | undefined {
+  return name.match(/#([0-9a-f]{8})$/)?.[1]
+}
+
+/** Finds persisted parents omitted from the recent-file candidate window. */
+function parentPathsToLoad(
+  loadedByPath: ReadonlyMap<string, RecentSession>,
+  availablePaths: ReadonlySet<string>,
+  attemptedPaths: ReadonlySet<string>,
+): string[] {
+  return [...new Set(
+    [...loadedByPath.values()].flatMap((session) => {
+      const parentPath = session.parentSessionPath
+      return parentPath && availablePaths.has(parentPath) && !loadedByPath.has(parentPath)
+          && !attemptedPaths.has(parentPath)
+        ? [parentPath]
+        : []
+    }),
+  )]
+}
+
 function isNotFound(error: unknown): boolean {
   return isObject(error) && error.code === 'ENOENT'
 }

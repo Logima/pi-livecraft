@@ -14,7 +14,9 @@ export interface RecentSession {
   id: string
   cwd: string
   name: string
+  displayName?: string
   sessionPath: string
+  parentSessionPath?: string
   updatedAt: number
 }
 

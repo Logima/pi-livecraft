@@ -342,6 +342,72 @@
 .session-list::-webkit-scrollbar {
   width: 6px;
 }
+.session-tree-node {
+  min-width: 0;
+}
+.session-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.session-tree-row .session-item {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.session-tree-toggle,
+.session-tree-spacer {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 30px;
+}
+.session-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 700 10px/1 ui-monospace, monospace;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+.session-tree-toggle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+}
+.session-tree-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.session-tree-toggle:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.session-tree-toggle > svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 180ms ease;
+}
+.session-tree-toggle.expanded > svg {
+  transform: rotate(90deg);
+}
+.session-tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-left: 16px;
+  padding-left: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+}
 .session-item {
   display: flex;
   align-items: center;
@@ -565,6 +631,10 @@
 @media (prefers-reduced-motion: reduce) {
   .session-list-loading {
     animation: none;
+  }
+  .session-tree-toggle,
+  .session-tree-toggle > svg {
+    transition: none;
   }
 }
 
