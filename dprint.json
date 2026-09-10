@@ -25,9 +25,9 @@
     "**/dist"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.96.1.wasm",
-    "https://plugins.dprint.dev/json-0.23.0.wasm",
-    "https://plugins.dprint.dev/g-plane/malva-v0.16.0.wasm",
-    "https://plugins.dprint.dev/g-plane/markup_fmt-v0.27.3.wasm"
+    "npm:@dprint/typescript",
+    "npm:@dprint/json",
+    "npm:dprint-plugin-malva",
+    "npm:dprint-plugin-markup"
   ]
 }

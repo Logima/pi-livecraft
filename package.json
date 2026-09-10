@@ -53,6 +53,8 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@dprint/json": "^0.23.0",
+    "@dprint/typescript": "^0.96.1",
     "@types/diff": "^7.0.2",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
@@ -61,6 +63,8 @@
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.3",
     "dprint": "^0.55.2",
+    "dprint-plugin-malva": "^0.16.0",
+    "dprint-plugin-markup": "^0.27.3",
     "husky": "^9.1.7",
     "lint-staged": "^17.2.0",
     "oxlint": "^1.71.0",
