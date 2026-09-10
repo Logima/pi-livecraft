@@ -19,13 +19,9 @@ export default function registerAskUserQuestion(pi: ExtensionAPI): void {
 }
 
 function registerAskUserQuestionTool(pi: ExtensionAPI, ctx: ExtensionContext): void {
-  if (pi.getAllTools().some((tool) => tool.name === 'ask_user_question')) {
-    ctx.ui.notify(
-      'The ask_user_question tool is already registered in Pi. Pi Livecraft will not replace it; the questionnaire remains available, but its UI may be limited while that tool remains registered.',
-      'error',
-    )
-    return
-  }
+  // Preserve the first registration: Pi rejects duplicate tool names, and an existing
+  // implementation may already provide compatible questionnaire behavior.
+  if (pi.getAllTools().some((tool) => tool.name === 'ask_user_question')) return
 
   pi.registerTool({
     name: 'ask_user_question',
