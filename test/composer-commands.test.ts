@@ -7,6 +7,7 @@ import {
   isCommandDraft,
   isCompactCommandDraft,
   isNewSessionCommandDraft,
+  isReloadCommandDraft,
 } from '../src/features/composer/composer-utils.ts'
 
 test('detects only slash commands exposed by Pi', () => {
@@ -38,6 +39,12 @@ test('detects /new and /clear without arguments', () => {
   assert.equal(isNewSessionCommandDraft('/clear now'), false)
 })
 
+test('detects /reload without arguments', () => {
+  assert.equal(isReloadCommandDraft('/reload'), true)
+  assert.equal(isReloadCommandDraft('  /RELOAD  '), true)
+  assert.equal(isReloadCommandDraft('/reload extensions'), false)
+})
+
 test('rejects unrelated input', () => {
   assert.equal(isCompactCommandDraft(''), false)
   assert.equal(isCompactCommandDraft('/agent'), false)
@@ -66,5 +73,10 @@ test('handles empty command list', () => {
 
 test('adds local session commands without duplicating Pi commands', () => {
   const result = ensureSessionCommands([{ name: 'new' }, { name: 'agent' }])
-  assert.deepEqual(result.map((command) => command.name), ['clear', 'new', 'agent'])
+  assert.deepEqual(result.map((command) => command.name), ['clear', 'reload', 'new', 'agent'])
+})
+
+test('does not duplicate /reload when Pi exposes it', () => {
+  const result = ensureSessionCommands([{ name: 'reload' }, { name: 'agent' }])
+  assert.deepEqual(result.map((command) => command.name), ['new', 'clear', 'reload', 'agent'])
 })

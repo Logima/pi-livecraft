@@ -26,6 +26,7 @@ import {
   isCompactCommandDraft,
   isNewSessionCommandDraft,
   isObject,
+  isReloadCommandDraft,
   readComposerDraft,
 } from './composer-utils.ts'
 import { AgentSelect } from './selects/AgentSelect.tsx'
@@ -366,6 +367,10 @@ export const Composer = memo(function Composer({
       }
       if (isNewSessionCommandDraft(nextMessage)) {
         await onNewSession()
+        return
+      }
+      if (isReloadCommandDraft(nextMessage)) {
+        await onCommand({ type: 'prompt', message: '/reload' })
         return
       }
       await onSend(

@@ -36,7 +36,9 @@ export function ensureSessionCommands(commands: JsonObject[]): JsonObject[] {
   const localCommands = [
     { name: 'new', description: 'Start a new session' },
     { name: 'clear', description: 'Start a new session' },
-  ].filter(({ name }) => !names.has(name))
+    { name: 'reload', description: 'Reload Pi resources' },
+  ]
+    .filter(({ name }) => !names.has(name))
   return [...localCommands, ...commands]
 }
 
@@ -45,9 +47,14 @@ export function isNewSessionCommandDraft(text: string): boolean {
   return /^\/(?:new|clear)$/.test(text.trim().toLowerCase())
 }
 
+/** Returns true when the trimmed draft is exactly the /reload slash command. */
+export function isReloadCommandDraft(text: string): boolean {
+  return text.trim().toLowerCase() === '/reload'
+}
+
 /** Identifies local commands that are complete as soon as they are selected. */
 export function commandTakesArguments(command: JsonObject): boolean {
-  return !['clear', 'compact', 'new'].includes(String(command.name).toLowerCase())
+  return !['clear', 'compact', 'new', 'reload'].includes(String(command.name).toLowerCase())
 }
 
 /** Restores the draft for one session from local storage. */
