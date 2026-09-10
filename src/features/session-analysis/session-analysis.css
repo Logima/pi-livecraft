@@ -365,14 +365,14 @@
 }
 .chart-tooltip text {
   fill: var(--ink);
-  font: 9px ui-monospace, monospace;
+  font: 10px ui-monospace, monospace;
 }
 .chart-tooltip-cost {
   font-weight: 700;
 }
 .chart-tooltip-tools {
   fill: var(--muted);
-  font-size: 8px;
+  font-size: 9px;
 }
 .chart-tooltip-turn {
   font-weight: 700;
@@ -391,7 +391,7 @@
   color: color-mix(in srgb, var(--warning-strong) 72%, var(--canvas));
 }
 .token-tooltip-value {
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 650;
 }
 .token-tooltip-value.token-series-miss {
