@@ -134,7 +134,7 @@ function App() {
     if (stored === 'simple') return 'simple'
     return window.localStorage.getItem('pi-livecraft.detailed-view') === 'false'
       ? 'simple'
-      : 'detailed'
+      : 'semi-detailed'
   })
   const conversationViewDetail = conversationViewDetails[conversationView]
 
