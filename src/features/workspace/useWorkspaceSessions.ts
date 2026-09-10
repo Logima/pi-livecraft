@@ -46,6 +46,7 @@ export function useWorkspaceSessions(
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([])
   const [sentSessions, setSentSessions] = useState<RecentSession[]>([])
+  const [unsentSessionIds, setUnsentSessionIds] = useState<ReadonlySet<string>>(new Set())
   const [completedSessionIds, setCompletedSessionIds] = useState<ReadonlySet<string>>(
     readCompletedSessionIds,
   )
@@ -226,6 +227,12 @@ export function useWorkspaceSessions(
       setSessions((current) =>
         current.map((candidate) => candidate.id === session.id ? { ...candidate, name } : candidate)
       )
+      setUnsentSessionIds((current) => {
+        if (!current.has(session.id)) return current
+        const next = new Set(current)
+        next.delete(session.id)
+        return next
+      })
       const sessionPath = session.sessionPath
       if (!sessionPath) return
       updatePinnedSessionName(sessionPath, name)
@@ -257,6 +264,23 @@ export function useWorkspaceSessions(
       setSelectedId('')
       try {
         const session = await start()
+        setUnsentSessionIds((current) => new Set(current).add(session.id))
+        // Keep a newly created session reachable before Pi persists its first prompt.
+        const sessionPath = session.sessionPath
+        if (sessionPath) {
+          setSentSessions((current) => [
+            {
+              id: session.id,
+              cwd: session.cwd,
+              name: session.name,
+              sessionPath,
+              updatedAt: Date.now(),
+            },
+            ...current.filter((recent) =>
+              recent.id !== session.id && recent.sessionPath !== sessionPath
+            ),
+          ])
+        }
         await refreshSessions(options.refreshCwd)
         setSelectedId(session.id)
         if (options.draftMessage) onDraftMessage(session.id, options.draftMessage)
@@ -428,6 +452,7 @@ export function useWorkspaceSessions(
     selectedId,
     sentSessions,
     sessions,
+    unsentSessionIds,
     setDirectoryPickerOpen,
     setSelectedId,
     selectWorkspace,

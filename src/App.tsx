@@ -335,6 +335,7 @@ function App() {
     sentSessions,
     sessions,
     setDirectoryPickerOpen,
+    unsentSessionIds,
     setSelectedId,
     selectWorkspace,
     startAndSelectSession: startWorkspaceSession,
@@ -361,8 +362,18 @@ function App() {
   )
 
   const createNewSession = useCallback(async (): Promise<void> => {
+    const reusableSession = sessions.find((session) =>
+      unsentSessionIds.has(session.id)
+      && session.status !== 'exited'
+      && session.name === 'New session'
+      && !window.localStorage.getItem(`pi-livecraft.composer-draft.${session.id}`)?.trim()
+    )
+    if (reusableSession) {
+      setSelectedId(reusableSession.id)
+      return
+    }
     await startAndSelectSession(() => createSession(workspacePath))
-  }, [startAndSelectSession, workspacePath])
+  }, [sessions, setSelectedId, startAndSelectSession, unsentSessionIds, workspacePath])
 
   const openPinnedSession = useCallback(
     async (session: PinnedSession): Promise<void> => {
