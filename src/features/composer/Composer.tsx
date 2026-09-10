@@ -18,10 +18,13 @@ import type {
 } from '../../../shared/types.ts'
 import { maxComposerImages, prepareComposerImage, type ComposerImage } from './composer-images.ts'
 import {
+  commandTakesArguments,
   ensureCompactCommand,
+  ensureSessionCommands,
   formatTokens,
   isCommandDraft,
   isCompactCommandDraft,
+  isNewSessionCommandDraft,
   isObject,
   readComposerDraft,
 } from './composer-utils.ts'
@@ -53,6 +56,7 @@ export const Composer = memo(function Composer({
   onAgentChange,
   onRequestAgentOptions,
   onCommand,
+  onNewSession,
   commands,
   running,
   compacting,
@@ -79,6 +83,7 @@ export const Composer = memo(function Composer({
   onAgentChange: (agent: string) => void
   onRequestAgentOptions: () => void
   onCommand: (command: JsonObject) => Promise<JsonObject>
+  onNewSession: () => Promise<void>
   commands: JsonObject[]
   running: boolean
   compacting: boolean
@@ -152,8 +157,8 @@ export const Composer = memo(function Composer({
   // Keep a ref to the latest draft so stable callbacks can read it without re-creating on every keystroke.
   const messageRef = useRef(message)
   messageRef.current = message
-  /** Snapshot commands augmented with the local compact command when Pi doesn't expose it. */
-  const allCommands = ensureCompactCommand(commands)
+  /** Snapshot commands augmented with local commands when Pi doesn't expose them. */
+  const allCommands = ensureSessionCommands(ensureCompactCommand(commands))
   const commandPending = isCommandDraft(message, allCommands)
   const promptTemplates = useMemo(() =>
     [...savedPrompts, ...snapshot.promptTemplates].filter((
@@ -281,12 +286,17 @@ export const Composer = memo(function Composer({
     }, 400)
   }, [persistDraft])
 
-  /** Inserts the selected slash command into the textarea and closes the popover. */
-  const selectSlashCommand = useCallback((name: string): void => {
-    setDraftMessage(`/${name} `)
+  /** Inserts an argument-taking command or executes a complete no-argument command. */
+  function selectSlashCommand(command: JsonObject): void {
+    const name = String(command.name)
     setSlashOpen(false)
     setSlashIndex(-1)
-  }, [setDraftMessage])
+    if (commandTakesArguments(command)) {
+      setDraftMessage(`/${name} `)
+      return
+    }
+    void submitMessage(`/${name}`)
+  }
 
   /** Shows a template without persisting it, retaining the existing draft until a selection is made. */
   const previewPrompt = useCallback((prompt: PromptTemplate): void => {
@@ -339,9 +349,7 @@ export const Composer = memo(function Composer({
   }
 
   /** Sends text and images in the same RPC command, restoring the draft on failure. */
-  async function submit(event: FormEvent): Promise<void> {
-    event.preventDefault()
-    const nextMessage = message.trim()
+  async function submitMessage(nextMessage: string): Promise<void> {
     if (preparingImages || (!nextMessage && images.length === 0)) return
     if (images.length > 0 && !supportsImages) {
       onError('The selected model does not accept images.')
@@ -354,6 +362,10 @@ export const Composer = memo(function Composer({
     try {
       if (isCompactCommandDraft(nextMessage)) {
         await onCommand({ type: 'compact' })
+        return
+      }
+      if (isNewSessionCommandDraft(nextMessage)) {
+        await onNewSession()
         return
       }
       await onSend(
@@ -369,6 +381,11 @@ export const Composer = memo(function Composer({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault()
+    await submitMessage(message.trim())
   }
 
   /** Produces an isolated rewrite while preserving the source text for an explicit comparison. */
@@ -481,7 +498,7 @@ export const Composer = memo(function Composer({
               aria-selected={index === slashIndex}
               className={`slash-command-item${index === slashIndex ? ' selected' : ''}`}
               key={String(command.name)}
-              onClick={() => selectSlashCommand(String(command.name))}
+              onClick={() => selectSlashCommand(command)}
               onMouseDown={(event) => event.preventDefault()}
               role='option'
             >
@@ -530,7 +547,7 @@ export const Composer = memo(function Composer({
             if (event.key === 'Enter' || event.key === 'Tab') {
               event.preventDefault()
               const target = slashIndex >= 0 ? filteredCommands[slashIndex] : filteredCommands[0]
-              if (target) selectSlashCommand(String(target.name))
+              if (target) selectSlashCommand(target)
               return
             }
             return

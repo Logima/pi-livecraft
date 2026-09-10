@@ -355,6 +355,10 @@ function App() {
     [startWorkspaceSession],
   )
 
+  const createNewSession = useCallback(async (): Promise<void> => {
+    await startAndSelectSession(() => createSession(workspacePath))
+  }, [startAndSelectSession, workspacePath])
+
   const openPinnedSession = useCallback(
     async (session: PinnedSession): Promise<void> => {
       selectWorkspace(session.cwd)
@@ -899,9 +903,7 @@ function App() {
       return
     }
     if (id === 'new-session') {
-      void startAndSelectSession(() => createSession(workspacePath)).catch((cause) =>
-        showToast('error', messageOf(cause))
-      )
+      void createNewSession().catch((cause) => showToast('error', messageOf(cause)))
       return
     }
     if (id === 'send') {
@@ -975,7 +977,7 @@ function App() {
     setSelectedId,
     showToast,
     snapshot.messages,
-    startAndSelectSession,
+    createNewSession,
     terminalCommand,
     workspacePath,
   ])
@@ -1130,9 +1132,7 @@ function App() {
         workspacePath={workspacePath}
         onChooseWorkspace={() => setDirectoryPickerOpen(true)}
         onCloseSession={closeManagedSession}
-        onCreate={async () => {
-          await startAndSelectSession(() => createSession(workspacePath))
-        }}
+        onCreate={createNewSession}
         onOpenSession={async (recentSession) => {
           await startAndSelectSession(() => openSession(workspacePath, recentSession.sessionPath))
         }}
@@ -1253,6 +1253,7 @@ function App() {
                       onAgentChange={handleComposerAgentChange}
                       onRequestAgentOptions={() => fetchAgentOptions(selectedSession.id)}
                       onCommand={handleComposerCommand}
+                      onNewSession={createNewSession}
                       commands={snapshot.commands}
                       agentLoading={snapshotSessionId !== selectedSession.id}
                       focusRequest={focusComposerRequest}

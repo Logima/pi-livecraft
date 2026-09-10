@@ -30,6 +30,26 @@ export function ensureCompactCommand(commands: JsonObject[]): JsonObject[] {
     : [{ name: 'compact' }, ...commands]
 }
 
+/** Adds local session commands without overriding commands provided by Pi. */
+export function ensureSessionCommands(commands: JsonObject[]): JsonObject[] {
+  const names = new Set(commands.map((command) => String(command.name).toLowerCase()))
+  const localCommands = [
+    { name: 'new', description: 'Start a new session' },
+    { name: 'clear', description: 'Start a new session' },
+  ].filter(({ name }) => !names.has(name))
+  return [...localCommands, ...commands]
+}
+
+/** Returns true for either local alias that starts a new session. */
+export function isNewSessionCommandDraft(text: string): boolean {
+  return /^\/(?:new|clear)$/.test(text.trim().toLowerCase())
+}
+
+/** Identifies local commands that are complete as soon as they are selected. */
+export function commandTakesArguments(command: JsonObject): boolean {
+  return !['clear', 'compact', 'new'].includes(String(command.name).toLowerCase())
+}
+
 /** Restores the draft for one session from local storage. */
 export function readComposerDraft(storageKey: string): string {
   try {
