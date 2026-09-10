@@ -11,6 +11,7 @@ import type { JsonObject, RecentSession, SessionSummary } from '../../../shared/
 import { isObject } from '../../../shared/is-object.ts'
 import { promptSessionTitle } from '../composer/prompt-title.ts'
 import { recentWorkspaces } from './recent-workspaces.ts'
+import { useTabStatus } from './useTabStatus.ts'
 import {
   nextActiveSessionId,
   pickSessionOnOpen,
@@ -47,6 +48,10 @@ export function useWorkspaceSessions(
   const [sentSessions, setSentSessions] = useState<RecentSession[]>([])
   const [completedSessionIds, setCompletedSessionIds] = useState<ReadonlySet<string>>(
     readCompletedSessionIds,
+  )
+  useTabStatus(
+    sessions.filter((session) => session.status === 'running').length,
+    completedSessionIds.size,
   )
   const [pinnedSessions, setPinnedSessions] = useState<PinnedSession[]>(readPinnedSessions)
   const [isRefreshingSessions, setIsRefreshingSessions] = useState(true)
@@ -94,16 +99,22 @@ export function useWorkspaceSessions(
   useEffect(() => {
     if (selectedId) window.localStorage.setItem('pi-livecraft.selected-session', selectedId)
     else window.localStorage.removeItem('pi-livecraft.selected-session')
-    setCompletedSessionIds((current) => {
-      const sessionKey = sessionsRef
-        .current
-        .find((session) => session.id === selectedId)
-        ?.sessionPath ?? selectedId
-      if (!current.has(sessionKey)) return current
-      const next = new Set(current)
-      next.delete(sessionKey)
-      return next
-    })
+    const markSelectedRead = () => {
+      if (document.visibilityState !== 'visible') return
+      setCompletedSessionIds((current) => {
+        const sessionKey = sessionsRef
+          .current
+          .find((session) => session.id === selectedId)
+          ?.sessionPath ?? selectedId
+        if (!current.has(sessionKey)) return current
+        const next = new Set(current)
+        next.delete(sessionKey)
+        return next
+      })
+    }
+    markSelectedRead()
+    document.addEventListener('visibilitychange', markSelectedRead)
+    return () => document.removeEventListener('visibilitychange', markSelectedRead)
   }, [selectedId])
 
   useEffect(() => writeCompletedSessionIds(completedSessionIds), [completedSessionIds])
@@ -379,7 +390,7 @@ export function useWorkspaceSessions(
   }, [])
 
   const markSessionCompleted = useCallback((sessionId: string): void => {
-    if (sessionId === selectedIdRef.current) return
+    if (sessionId === selectedIdRef.current && document.visibilityState === 'visible') return
     const sessionKey = sessionsRef.current.find((session) => session.id === sessionId)?.sessionPath
       ?? sessionId
     setCompletedSessionIds((current) => {
