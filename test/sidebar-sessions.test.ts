@@ -9,6 +9,7 @@ import {
   relatedParentSessionPaths,
   sidebarSessions,
   sidebarSessionTree,
+  workspaceSessionCounts,
 } from '../src/features/workspace/sidebar-sessions.ts'
 
 const persisted: RecentSession = {
@@ -21,6 +22,26 @@ const persisted: RecentSession = {
 
 test('shows persisted sessions from the current workspace', () => {
   assert.deepEqual(sidebarSessions([persisted], '/workspace'), [persisted])
+})
+
+test('counts running and unread sessions for a workspace', () => {
+  const sessions: SessionSummary[] = [
+    { id: 'running', cwd: '/workspace', name: 'Running', status: 'running', pendingUi: [] },
+    {
+      id: 'finished',
+      cwd: '/workspace',
+      name: 'Finished',
+      sessionPath: '/sessions/finished.jsonl',
+      status: 'idle',
+      pendingUi: [],
+    },
+    { id: 'other', cwd: '/other', name: 'Other', status: 'running', pendingUi: [] },
+  ]
+
+  assert.deepEqual(
+    workspaceSessionCounts(sessions, '/workspace', new Set(['/sessions/finished.jsonl'])),
+    { running: 1, unread: 1 },
+  )
 })
 
 test('hides persisted sessions from another workspace', () => {

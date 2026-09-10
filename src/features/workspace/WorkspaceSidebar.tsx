@@ -17,6 +17,7 @@ import {
   otherWorkspaceSessions,
   relatedParentSessionPaths,
   sidebarSessionTree,
+  workspaceSessionCounts,
   type PinnedSession,
   type SessionActionTarget,
   type SidebarSessionNode,
@@ -37,12 +38,14 @@ interface WorkspaceSidebarProps {
   isRefreshing: boolean
   pinnedSessions: readonly PinnedSession[]
   recentSessions: RecentSession[]
+  recentWorkspacePaths: string[]
   sentSessions: RecentSession[]
   sessions: SessionSummary[]
   selectedId: string
   width: number
   workspacePath: string
   onChooseWorkspace: () => void
+  onSelectWorkspace: (path: string) => void
   onCloseSession: (sessionId: string) => Promise<void>
   onCreate: () => Promise<void>
   onOpenSession: (session: RecentSession) => Promise<void>
@@ -65,12 +68,14 @@ export function WorkspaceSidebar({
   isRefreshing,
   pinnedSessions,
   recentSessions,
+  recentWorkspacePaths,
   sentSessions,
   sessions,
   selectedId,
   width,
   workspacePath,
   onChooseWorkspace,
+  onSelectWorkspace,
   onCloseSession,
   onCreate,
   onOpenSession,
@@ -129,6 +134,15 @@ export function WorkspaceSidebar({
   const otherPinnedSessions = useMemo(
     () => otherWorkspacePinnedSessions(pinnedSessions, sessions, workspacePath),
     [pinnedSessions, sessions, workspacePath],
+  )
+  const workspaceCounts = useMemo(
+    () => new Map(
+      recentWorkspacePaths.map((path) => [
+        path,
+        workspaceSessionCounts(sessions, path, completedSessionIds),
+      ]),
+    ),
+    [completedSessionIds, recentWorkspacePaths, sessions],
   )
 
   useEffect(() => {
@@ -472,6 +486,48 @@ export function WorkspaceSidebar({
           </button>
         </Tooltip>
       </div>
+      {recentWorkspacePaths.filter((path) => path !== workspacePath).length > 0 && (
+        <section aria-label='Recent workspaces' className='recent-workspaces-sidebar'>
+          <h2>Recent workspaces</h2>
+          <nav aria-label='Recent workspaces' className='recent-workspaces-sidebar-list'>
+            {recentWorkspacePaths
+              .filter((path) => path !== workspacePath)
+              .map((path) => (
+                <button
+                  aria-label={`Open workspace ${path}`}
+                  className='workspace-item'
+                  key={path}
+                  onClick={() => onSelectWorkspace(path)}
+                  title={path}
+                  type='button'
+                >
+                  <WorkspaceIcon />
+                  <span className='workspace-item-path'>{path}</span>
+                  <span className='workspace-status-counts' aria-label='Session status counts'>
+                    {(workspaceCounts.get(path)?.running ?? 0) > 0 && (
+                      <span className='workspace-status-count'>
+                        <SessionStatusIndicator
+                          label='Running sessions'
+                          status='working'
+                        />
+                        {workspaceCounts.get(path)?.running}
+                      </span>
+                    )}
+                    {(workspaceCounts.get(path)?.unread ?? 0) > 0 && (
+                      <span className='workspace-status-count'>
+                        <SessionStatusIndicator
+                          label='Finished unread sessions'
+                          status='complete'
+                        />
+                        {workspaceCounts.get(path)?.unread}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              ))}
+          </nav>
+        </section>
+      )}
       <NewSessionButton onCreate={onCreate} onError={onError} />
       <nav className='session-list' aria-label='Recent Pi sessions'>
         {isRefreshing && sessionTree.length === 0 && (

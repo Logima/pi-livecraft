@@ -1171,12 +1171,14 @@ function App() {
         isRefreshing={isRefreshingSessions}
         pinnedSessions={pinnedSessions}
         recentSessions={recentSessions}
+        recentWorkspacePaths={recentWorkspacePaths}
         sentSessions={sentSessions}
         sessions={sessions}
         selectedId={selectedId}
         width={workspaceSidebarWidth}
         workspacePath={workspacePath}
         onChooseWorkspace={() => setDirectoryPickerOpen(true)}
+        onSelectWorkspace={selectWorkspace}
         onCloseSession={closeManagedSession}
         onCreate={createNewSession}
         onOpenSession={async (recentSession) => {

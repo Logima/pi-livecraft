@@ -8,6 +8,30 @@ export interface SessionActionTarget {
   sessionPath?: string
 }
 
+export interface WorkspaceSessionCounts {
+  running: number
+  unread: number
+}
+
+/** Counts active and finished-unread sessions belonging to one workspace. */
+export function workspaceSessionCounts(
+  sessions: readonly SessionSummary[],
+  workspacePath: string,
+  completedSessionIds: ReadonlySet<string>,
+): WorkspaceSessionCounts {
+  return sessions
+    .filter((session) => session.cwd === workspacePath)
+    .reduce(
+      (counts, session) => ({
+        running: counts.running + Number(session.status === 'running'),
+        unread: counts.unread + Number(
+          completedSessionIds.has(session.sessionPath ?? session.id)
+        ),
+      }),
+      { running: 0, unread: 0 },
+    )
+}
+
 export type PinnedSession = Pick<RecentSession, 'cwd' | 'name' | 'sessionPath'>
 
 export interface SidebarSessionNode {
