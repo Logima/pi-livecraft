@@ -71,6 +71,12 @@
   background: var(--accent);
   transition: width 180ms cubic-bezier(0.25, 1, 0.5, 1);
 }
+.quota-bar-reset {
+  margin-top: 5px;
+}
+.quota-bar-reset span {
+  background: var(--secondary);
+}
 .quota-row small {
   display: block;
   margin-top: 6px;

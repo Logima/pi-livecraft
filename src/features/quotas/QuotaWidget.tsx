@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Tooltip } from '../../components/Tooltip.tsx'
 import type { QuotaProviderSnapshot, QuotaSnapshot } from '../../../shared/types.ts'
 
@@ -7,7 +7,13 @@ export function QuotaWidget(
   { quotas, onRefresh }: { quotas: QuotaSnapshot | null; onRefresh: () => Promise<void> },
 ) {
   const [refreshing, setRefreshing] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
   const updatedAt = Math.max(quotas?.openai.updatedAt ?? 0, quotas?.copilot.updatedAt ?? 0)
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(interval)
+  }, [])
 
   /** Keeps the button disabled until the manual refresh completes, whether success or error. */
   async function refresh(): Promise<void> {
@@ -56,9 +62,16 @@ export function QuotaWidget(
                     value={window.remainingPercent}
                   />
                   {window.resetsAt && (
-                    <small title={`Reset at ${formatResetDate(window.resetsAt)}`}>
-                      Reset in {formatResetDistance(window.resetsAt)}
-                    </small>
+                    <>
+                      <QuotaResetBar
+                        resetsAt={window.resetsAt}
+                        duration={window.period === '5h' ? 5 * 3_600_000 : 7 * 24 * 3_600_000}
+                        now={now}
+                      />
+                      <small title={`Reset at ${formatResetDate(window.resetsAt)}`}>
+                        Reset in {formatResetDistance(window.resetsAt, now)}
+                      </small>
+                    </>
                   )}
                 </div>
               ))}
@@ -75,9 +88,16 @@ export function QuotaWidget(
                     value={window.used / window.limit * 100}
                   />
                   {window.resetsAt && (
-                    <small title={`Reset at ${formatResetDate(window.resetsAt)}`}>
-                      Reset in {formatResetDistance(window.resetsAt)}
-                    </small>
+                    <>
+                      <QuotaResetBar
+                        resetsAt={window.resetsAt}
+                        duration={30 * 24 * 3_600_000}
+                        now={now}
+                      />
+                      <small title={`Reset at ${formatResetDate(window.resetsAt)}`}>
+                        Reset in {formatResetDistance(window.resetsAt, now)}
+                      </small>
+                    </>
                   )}
                 </div>
               ))}
@@ -111,7 +131,11 @@ function ProviderSection(
   )
 }
 
-function QuotaBar({ label, value }: { label: string; value: number }) {
+function QuotaBar({ label, value, variant = 'usage' }: {
+  label: string
+  value: number
+  variant?: 'usage' | 'reset'
+}) {
   const bounded = Math.min(100, Math.max(0, value))
   return (
     <div
@@ -119,11 +143,25 @@ function QuotaBar({ label, value }: { label: string; value: number }) {
       aria-valuemax={100}
       aria-valuemin={0}
       aria-valuenow={Math.round(bounded)}
-      className='quota-bar'
+      className={`quota-bar quota-bar-${variant}`}
       role='progressbar'
     >
       <span style={{ width: `${bounded}%` }} />
     </div>
+  )
+}
+
+function QuotaResetBar(
+  { resetsAt, duration, now }: { resetsAt: number; duration: number; now: number },
+) {
+  const remaining = Math.max(0, resetsAt - now)
+  const value = duration > 0 ? remaining / duration * 100 : 0
+  return (
+    <QuotaBar
+      label={`${formatResetDistance(resetsAt, now)} until reset`}
+      value={value}
+      variant='reset'
+    />
   )
 }
 
@@ -149,8 +187,8 @@ function formatRelativeDate(timestamp: number): string {
     .format(timestamp)
 }
 
-function formatResetDistance(timestamp: number): string {
-  const remainingHours = Math.max(0, Math.floor((timestamp - Date.now()) / 3_600_000))
+function formatResetDistance(timestamp: number, now = Date.now()): string {
+  const remainingHours = Math.max(0, Math.floor((timestamp - now) / 3_600_000))
   const days = Math.floor(remainingHours / 24)
   const hours = remainingHours % 24
   return days > 0 ? `${days}d ${hours}h` : `${hours}h`
