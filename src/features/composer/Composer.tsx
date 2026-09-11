@@ -117,6 +117,7 @@ export const Composer = memo(function Composer({
   const [images, setImages] = useState<ComposerImage[]>([])
   const [preparingImages, setPreparingImages] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const wasSubmittingRef = useRef(false)
   const [improving, setImproving] = useState(false)
   const [improvePreset, setImprovePreset] = useState('')
   const [previewingPrompt, setPreviewingPrompt] = useState(false)
@@ -223,6 +224,20 @@ export const Composer = memo(function Composer({
   }, [draftRequest, onDraftApplied])
 
   // Place the caret at the end when the browser restores focus on refresh.
+  useLayoutEffect(() => {
+    if (submitting) {
+      wasSubmittingRef.current = true
+      return
+    }
+    if (!wasSubmittingRef.current) return
+    wasSubmittingRef.current = false
+    const activeElement = document.activeElement
+    if (
+      !(activeElement instanceof HTMLElement)
+      || !activeElement.closest('dialog,[aria-modal="true"]')
+    ) textareaRef.current?.focus()
+  }, [submitting])
+
   useLayoutEffect(() => {
     const textarea = textareaRef.current
     if (textarea && document.activeElement === textarea) {
@@ -517,7 +532,7 @@ export const Composer = memo(function Composer({
       )}
       <textarea
         aria-label='Message'
-        disabled={submitting}
+        readOnly={submitting}
         onPaste={(event) => void handlePaste(event)}
         ref={textareaRef}
         value={message}
