@@ -37,6 +37,7 @@ interface StartSessionOptions {
 
 const COMPLETED_SESSIONS_KEY = 'pi-livecraft.completed-sessions'
 const PINNED_SESSIONS_KEY = 'pi-livecraft.pinned-sessions'
+const LAST_SESSIONS_BY_WORKSPACE_KEY = 'pi-livecraft.last-sessions-by-workspace'
 const MAX_COMPLETED_SESSIONS = 30
 
 /** Owns workspace selection, session lists, persistence, and session creation. */
@@ -99,8 +100,12 @@ export function useWorkspaceSessions(
   }, [])
 
   useEffect(() => {
-    if (selectedId) window.localStorage.setItem('pi-livecraft.selected-session', selectedId)
-    else window.localStorage.removeItem('pi-livecraft.selected-session')
+    if (selectedId) {
+      window.localStorage.setItem('pi-livecraft.selected-session', selectedId)
+      writeLastSessionForWorkspace(workspacePath, selectedId)
+    } else {
+      window.localStorage.removeItem('pi-livecraft.selected-session')
+    }
     const nextUrl = urlForSession(selectedId)
     if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
       window.history.replaceState(null, '', nextUrl)
@@ -121,7 +126,7 @@ export function useWorkspaceSessions(
     markSelectedRead()
     document.addEventListener('visibilitychange', markSelectedRead)
     return () => document.removeEventListener('visibilitychange', markSelectedRead)
-  }, [selectedId])
+  }, [selectedId, workspacePath])
 
   useEffect(() => {
     const handlePopState = (): void => setSelectedId(readSessionIdFromUrl())
@@ -153,8 +158,13 @@ export function useWorkspaceSessions(
       )
       if (version !== refreshVersionRef.current) return
       const requestedSessionId = selectedIdRef.current
+      const requestedSessionIsAvailable = nextSessions.some(
+        (session) => session.id === requestedSessionId && session.cwd === cwd,
+      ) || sentSessionsRef.current.some(
+        (session) => session.id === requestedSessionId && session.cwd === cwd,
+      )
       const autoSelectId = shouldAutoSelect
-        ? nextSessions.some((session) => session.id === requestedSessionId && session.cwd === cwd)
+        ? requestedSessionIsAvailable
           ? requestedSessionId
           : pickSessionOnOpen(
             sidebarSessions(nextRecentSessions, cwd, sentSessionsRef.current),
@@ -218,6 +228,8 @@ export function useWorkspaceSessions(
 
   /** Selects a workspace, optionally preserving an explicit session over automatic selection. */
   const selectWorkspace = useCallback((path: string, targetSessionId?: string): void => {
+    if (selectedIdRef.current) writeLastSessionForWorkspace(workspacePath, selectedIdRef.current)
+    const rememberedSessionId = targetSessionId ?? readLastSessionForWorkspace(path)
     window.localStorage.setItem('pi-livecraft.workspace-path', path)
     const nextRecentWorkspacePaths = recentWorkspaces(path, recentWorkspacePaths)
     window.localStorage.setItem(
@@ -227,11 +239,11 @@ export function useWorkspaceSessions(
     setRecentWorkspacePaths(nextRecentWorkspacePaths)
     onWorkspaceSelected()
     setWorkspacePath(path)
-    setSelectedId(targetSessionId ?? '')
+    setSelectedId(rememberedSessionId)
     setDirectoryPickerOpen(false)
     autoSelectOnRefreshRef.current = targetSessionId === undefined
     void refreshSessions(path)
-  }, [onWorkspaceSelected, recentWorkspacePaths, refreshSessions])
+  }, [onWorkspaceSelected, recentWorkspacePaths, refreshSessions, workspacePath])
 
   const updatePinnedSessionName = useCallback((sessionPath: string, name: string): void => {
     setPinnedSessions((current) => {
@@ -484,6 +496,33 @@ export function useWorkspaceSessions(
     startAndSelectSession,
     updateSession,
     workspacePath,
+  }
+}
+
+/** Reads the last selected session for a workspace from localStorage. */
+function readLastSessionForWorkspace(workspacePath: string): string {
+  try {
+    const stored = window.localStorage.getItem(LAST_SESSIONS_BY_WORKSPACE_KEY)
+    if (!stored) return ''
+    const parsed: unknown = JSON.parse(stored)
+    return isObject(parsed) && typeof parsed[workspacePath] === 'string'
+      ? parsed[workspacePath]
+      : ''
+  } catch {
+    return ''
+  }
+}
+
+/** Persists the last selected session without affecting other workspaces. */
+function writeLastSessionForWorkspace(workspacePath: string, sessionId: string): void {
+  try {
+    const stored = window.localStorage.getItem(LAST_SESSIONS_BY_WORKSPACE_KEY)
+    const parsed: unknown = stored ? JSON.parse(stored) : {}
+    const sessions = isObject(parsed) ? { ...parsed } : {}
+    sessions[workspacePath] = sessionId
+    window.localStorage.setItem(LAST_SESSIONS_BY_WORKSPACE_KEY, JSON.stringify(sessions))
+  } catch {
+    // Local storage is optional; session selection still works for the current view.
   }
 }
 
