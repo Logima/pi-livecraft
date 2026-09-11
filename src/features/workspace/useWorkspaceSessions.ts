@@ -11,6 +11,7 @@ import type { JsonObject, RecentSession, SessionSummary } from '../../../shared/
 import { isObject } from '../../../shared/is-object.ts'
 import { promptSessionTitle } from '../composer/prompt-title.ts'
 import { recentWorkspaces } from './recent-workspaces.ts'
+import { readSessionIdFromUrl, urlForSession } from './session-url.ts'
 import { useTabStatus } from './useTabStatus.ts'
 import {
   nextActiveSessionId,
@@ -66,7 +67,7 @@ export function useWorkspaceSessions(
     )
   )
   const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false)
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedId, setSelectedId] = useState(readSessionIdFromUrl)
   const [creatingSession, setCreatingSession] = useState(false)
   const sessionsRef = useRef(sessions)
   const recentSessionsRef = useRef(recentSessions)
@@ -100,6 +101,10 @@ export function useWorkspaceSessions(
   useEffect(() => {
     if (selectedId) window.localStorage.setItem('pi-livecraft.selected-session', selectedId)
     else window.localStorage.removeItem('pi-livecraft.selected-session')
+    const nextUrl = urlForSession(selectedId)
+    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(null, '', nextUrl)
+    }
     const markSelectedRead = () => {
       if (document.visibilityState !== 'visible') return
       setCompletedSessionIds((current) => {
@@ -118,6 +123,12 @@ export function useWorkspaceSessions(
     return () => document.removeEventListener('visibilitychange', markSelectedRead)
   }, [selectedId])
 
+  useEffect(() => {
+    const handlePopState = (): void => setSelectedId(readSessionIdFromUrl())
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   useEffect(() => writeCompletedSessionIds(completedSessionIds), [completedSessionIds])
   useEffect(() => writePinnedSessions(pinnedSessions), [pinnedSessions])
 
@@ -132,12 +143,15 @@ export function useWorkspaceSessions(
         listRecentSessions(cwd),
       ])
       if (version !== refreshVersionRef.current) return
+      const requestedSessionId = selectedIdRef.current
       const autoSelectId = shouldAutoSelect
-        ? pickSessionOnOpen(
-          sidebarSessions(nextRecentSessions, cwd, sentSessionsRef.current),
-          nextSessions,
-          completedSessionIdsRef.current,
-        )
+        ? nextSessions.some((session) => session.id === requestedSessionId && session.cwd === cwd)
+          ? requestedSessionId
+          : pickSessionOnOpen(
+            sidebarSessions(nextRecentSessions, cwd, sentSessionsRef.current),
+            nextSessions,
+            completedSessionIdsRef.current,
+          )
         : undefined
       const recentNames = new Map(
         nextRecentSessions.map((session) => [session.sessionPath, session.name]),
