@@ -143,6 +143,15 @@ export function useWorkspaceSessions(
         listRecentSessions(cwd),
       ])
       if (version !== refreshVersionRef.current) return
+      const otherWorkspacePaths = new Set(
+        nextSessions
+          .map((session) => session.cwd)
+          .filter((sessionCwd) => sessionCwd !== cwd),
+      )
+      const otherRecentSessions = await Promise.all(
+        [...otherWorkspacePaths].map((sessionCwd) => listRecentSessions(sessionCwd)),
+      )
+      if (version !== refreshVersionRef.current) return
       const requestedSessionId = selectedIdRef.current
       const autoSelectId = shouldAutoSelect
         ? nextSessions.some((session) => session.id === requestedSessionId && session.cwd === cwd)
@@ -154,7 +163,9 @@ export function useWorkspaceSessions(
           )
         : undefined
       const recentNames = new Map(
-        nextRecentSessions.map((session) => [session.sessionPath, session.name]),
+        [nextRecentSessions, ...otherRecentSessions]
+          .flat()
+          .map((session) => [session.sessionPath, session.name]),
       )
       const namedSessions = nextSessions.map((session) => {
         const recentName = session.sessionPath ? recentNames.get(session.sessionPath) : undefined
