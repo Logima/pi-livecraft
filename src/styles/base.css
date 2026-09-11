@@ -262,8 +262,8 @@ button:disabled, select:disabled {
   .reasoning pre {
     background: var(--surface);
   }
-  .content :not(pre) > code {
-    background: var(--surface-raised);
+  .user .content :not(pre) > code {
+    background: color-mix(in srgb, var(--ink) 18%, var(--surface));
   }
   .user .content pre {
     background: color-mix(in srgb, var(--canvas) 80%, var(--ink));
