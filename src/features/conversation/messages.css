@@ -66,6 +66,13 @@
   font: 10px/1.4 ui-monospace, monospace;
   overflow-wrap: anywhere;
 }
+.pi-notification-content {
+  margin: 0;
+  color: var(--ink);
+  font: 12px/1.55 ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .turn-usage {
   display: flex;
   flex-wrap: wrap;

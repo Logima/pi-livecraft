@@ -316,6 +316,22 @@ export function useConversationRuntime(
     setPendingSteering((current) => [...current, message])
   }, [])
 
+  /** Adds transient Pi output to the selected conversation without pretending it is an assistant turn. */
+  const addConversationNotice = useCallback((message: string): void => {
+    flushLiveUpdates()
+    const next = [...liveMessagesRef.current, {
+      id: crypto.randomUUID(),
+      message: {
+        role: 'custom',
+        customType: 'pi-notification',
+        display: true,
+        content: message,
+      },
+    }]
+    liveMessagesRef.current = next
+    setLiveMessages(next)
+  }, [flushLiveUpdates])
+
   /** Removes the most recently queued optimistic steering message after a send failure. */
   const removePendingSteering = useCallback((message: string): void => {
     setPendingSteering((current) => {
@@ -349,6 +365,7 @@ export function useConversationRuntime(
 
   return {
     activity,
+    addConversationNotice,
     addOptimisticUserMessage,
     addPendingSteering,
     clearActivity,

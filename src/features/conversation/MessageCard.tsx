@@ -16,6 +16,8 @@ export const MessageCard = memo(
       onFork: (entryId: string) => Promise<boolean>
     },
   ) {
+    if (message.role === 'custom' && message.customType === 'pi-notification')
+      return <PiNotificationMessage message={message} />
     if (message.role === 'custom' && typeof message.customType === 'string')
       return <DefaultCustomMessage message={message} />
     return <DefaultMessageCard message={message} onError={onError} onFork={onFork} />
@@ -61,6 +63,15 @@ const DefaultMessageCard = memo(
     )
   },
 )
+
+/** Renders multiline output from a non-blocking Pi extension request in the thread. */
+function PiNotificationMessage({ message }: { message: JsonObject }) {
+  return (
+    <article className='message custom-message pi-notification'>
+      <pre className='pi-notification-content'>{String(message.content ?? '')}</pre>
+    </article>
+  )
+}
 
 /** Renders an unknown custom message without interpreting extension-specific details. */
 function DefaultCustomMessage({ message }: { message: JsonObject & { customType?: unknown } }) {

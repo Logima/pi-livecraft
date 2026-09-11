@@ -399,6 +399,7 @@ function App() {
 
   const {
     activity,
+    addConversationNotice,
     addOptimisticUserMessage,
     addPendingSteering,
     clearActivity,
@@ -692,8 +693,19 @@ function App() {
         if (
           event.method === 'notify' || (event.method === 'setStatus' && event.statusKey === 'agent')
         ) selectCreatedSession(sessionId)
-        if (event.method === 'notify' && typeof event.message === 'string')
-          showToast(event.notifyType === 'error' ? 'error' : 'notice', event.message, sessionId)
+        if (event.method === 'notify' && typeof event.message === 'string') {
+          const isConversationResult = sessionId === selectedIdRef.current
+            && event.notifyType !== 'error'
+            && /\r?\n/.test(event.message)
+          if (isConversationResult) {
+            addConversationNotice(event.message)
+            setFocusComposerRequest((current) => current + 1)
+          } else showToast(
+              event.notifyType === 'error' ? 'error' : 'notice',
+              event.message,
+              sessionId,
+            )
+        }
         // Intercept agent selector silently when Livecraft requested the options list.
         if (isAgentSelector(event) && agentOptionsLoadingRef.current[sessionId]) {
           const options = event.options.filter((o): o is string => typeof o === 'string')
@@ -722,6 +734,7 @@ function App() {
         setFocusComposerRequest((current) => current + 1)
     },
     [
+      addConversationNotice,
       addPendingRequest,
       clearActivity,
       flushLiveUpdates,
