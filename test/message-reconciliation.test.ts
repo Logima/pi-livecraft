@@ -151,3 +151,21 @@ test('keeps an unmatched optimistic user message as a live entry', () => {
     { key: 'opt-1', source: 'live' },
   ])
 })
+
+test('keeps anchored live output before history that arrives later', () => {
+  const history = [
+    { role: 'user', content: 'Before' },
+    { role: 'assistant', content: 'After' },
+  ]
+  const live = [{
+    id: 'notice-1',
+    historyIndex: 1,
+    message: { role: 'custom', customType: 'pi-notification', content: 'Output' },
+  }]
+  const entries = conversationMessageEntries(history, live)
+  assert.deepEqual(entries.map(({ key }) => key), [
+    'history--0',
+    'notice-1',
+    'history--1',
+  ])
+})

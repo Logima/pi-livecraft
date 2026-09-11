@@ -67,8 +67,10 @@ export function useConversationRuntime(
   const liveMessagesRef = useRef<LiveMessage[]>([])
   const liveMessageIndexRef = useRef(-1)
   const pendingLiveMessagesRef = useRef<LiveMessage[] | undefined>(undefined)
+  const historyLengthRef = useRef(0)
   const liveUpdateFrameRef = useRef<number | undefined>(undefined)
   selectedIdRef.current = selectedId
+  historyLengthRef.current = snapshot.messages.length
 
   /** Applies the latest streamed assistant messages at most once per rendered frame. */
   const flushLiveUpdates = useCallback(() => {
@@ -252,7 +254,11 @@ export function useConversationRuntime(
         setToolExecutions(interruptToolCallGeneration)
         const message = assistantMessageInEvent(event)
         if (message) {
-          const next = [...liveMessagesRef.current, { id: crypto.randomUUID(), message }]
+          const next = [...liveMessagesRef.current, {
+            id: crypto.randomUUID(),
+            message,
+            historyIndex: historyLengthRef.current,
+          }]
           liveMessagesRef.current = next
           liveMessageIndexRef.current = next.length - 1
           setLiveMessages(next)
@@ -321,6 +327,7 @@ export function useConversationRuntime(
     flushLiveUpdates()
     const next = [...liveMessagesRef.current, {
       id: crypto.randomUUID(),
+      historyIndex: historyLengthRef.current,
       message: {
         role: 'custom',
         customType: 'pi-notification',
@@ -346,6 +353,7 @@ export function useConversationRuntime(
     const id = crypto.randomUUID()
     const next = [...liveMessagesRef.current, {
       id,
+      historyIndex: historyLengthRef.current,
       message: { role: 'user', content: message, timestamp: Date.now() },
     }]
     liveMessagesRef.current = next

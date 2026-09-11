@@ -10,6 +10,8 @@ export type AssistantTurnPart = { kind: 'message'; message: JsonObject } | {
 export interface LiveMessage {
   id: string
   message: JsonObject
+  /** Number of history messages already rendered when this live message was created. */
+  historyIndex?: number
 }
 
 export type ConversationMessageEntry =
@@ -108,12 +110,24 @@ export function conversationMessageEntries(
       historyIndex,
     }
   })
-  return [
-    ...historyEntries,
-    ...liveMessages
-      .filter(({ id }) => !matchedLiveIds.has(id))
-      .map(({ id, message }) => ({ key: id, message, source: 'live' as const })),
-  ]
+  const liveEntriesByHistoryIndex = new Map<number, ConversationMessageEntry[]>()
+  for (const { id, message, historyIndex } of liveMessages) {
+    if (matchedLiveIds.has(id)) continue
+    const index = Math.max(
+      0,
+      Math.min(historyEntries.length, historyIndex ?? historyEntries.length),
+    )
+    const entries = liveEntriesByHistoryIndex.get(index)
+    const entry = { key: id, message, source: 'live' as const }
+    if (entries) entries.push(entry)
+    else liveEntriesByHistoryIndex.set(index, [entry])
+  }
+  const entries: ConversationMessageEntry[] = []
+  for (let index = 0; index <= historyEntries.length; index += 1) {
+    entries.push(...(liveEntriesByHistoryIndex.get(index) ?? []))
+    if (index < historyEntries.length) entries.push(historyEntries[index])
+  }
+  return entries
 }
 
 /** Returns assistant content before the tool calls belonging to that message. */
