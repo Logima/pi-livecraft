@@ -301,7 +301,6 @@ function App() {
   }, [showToast])
   const handleWorkspaceSelected = useCallback((): void => {
     setGitSnapshot(null)
-    setActiveRightWidget(null)
   }, [])
   const handleSessionDraft = useCallback((sessionId: string, message: string): void => {
     setComposerDraftRequest({ id: crypto.randomUUID(), message, sessionId })
