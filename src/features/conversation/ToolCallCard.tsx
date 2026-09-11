@@ -14,6 +14,7 @@ import {
   readContentDisplay,
   toolCallPresentation,
   toolDataLength,
+  toolDisplayName,
   toolFilePath,
   toolTextPreview,
   toolWriteContent,
@@ -136,12 +137,8 @@ export const ToolCallCard = memo(function ToolCallCard({
     ? resolveFileIcon(presentation.headerDetail.title)
     : null
   const commandText = presentation.headerDetail?.text
-  const bashCommandMatch = toolName === 'bash' ? commandText?.match(/^\s*(\S+)/) : undefined
-  const bashCommandName = bashCommandMatch?.[1]
-  const headingName = bashCommandName ?? (toolName || 'tool')
-  const displayedCommand = bashCommandMatch && commandText
-    ? commandText.slice(bashCommandMatch[0].length).trimStart()
-    : commandText
+  const headingName = toolDisplayName(toolName || 'tool')
+  const displayedCommand = commandText
   const tooltip = formatToolCallTooltip(
     presentation.headerDetail?.title ?? input,
     inputLength,
@@ -258,7 +255,7 @@ export const ToolCallCard = memo(function ToolCallCard({
           >
             <span aria-hidden='true'>⌘</span>
             <span>
-              <strong aria-label={tooltip}>{headingName}</strong>
+              <strong>{headingName}</strong>
             </span>
             {presentation.headerDetail && displayedCommand && (
               <span className='tool-call-command'>

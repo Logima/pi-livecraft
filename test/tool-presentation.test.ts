@@ -11,6 +11,7 @@ import {
   readContentDisplay,
   toolCallPresentation,
   toolDataLength,
+  toolDisplayName,
   toolEditChanges,
   toolFilePath,
   toolTextPreview,
@@ -112,6 +113,12 @@ test('extracts a usable file path from read and write calls', () => {
   assert.equal(toolFilePath({ path: 'src/App.tsx' }), 'src/App.tsx')
   assert.equal(toolFilePath({ path: '' }), null)
   assert.equal(toolFilePath({}), null)
+})
+
+test('uses human-readable tool display names', () => {
+  assert.equal(toolDisplayName('bash'), 'Bash')
+  assert.equal(toolDisplayName('get_subagent_result'), 'Subagent result')
+  assert.equal(toolDisplayName('custom_tool'), 'Custom tool')
 })
 
 test('shows the delegated agent description in the tool header', () => {

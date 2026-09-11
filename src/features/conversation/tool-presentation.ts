@@ -183,6 +183,17 @@ export function fileUrl(path: string): string {
   }`
 }
 
+const toolDisplayNames: Record<string, string> = {
+  bash: 'Bash',
+  get_subagent_result: 'Subagent result',
+}
+
+/** Returns the concise human-readable label shown for a tool call. */
+export function toolDisplayName(name: string): string {
+  const displayName = toolDisplayNames[name] ?? name.replaceAll(/[_-]+/g, ' ')
+  return displayName ? `${displayName[0].toUpperCase()}${displayName.slice(1)}` : displayName
+}
+
 export function toolCallPresentation(
   call: ToolCall,
   repositoryRoot?: string | null,
