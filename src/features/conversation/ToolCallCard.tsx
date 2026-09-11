@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { resolveFileIcon } from '../../../shared/file-icon.ts'
 import { isObject } from '../../../shared/is-object.ts'
 import type { JsonObject } from '../../../shared/types.ts'
@@ -16,10 +16,9 @@ import {
   toolDataLength,
   toolDisplayName,
   toolFilePath,
-  toolTextPreview,
   toolWriteContent,
 } from './tool-presentation.ts'
-import { ToolCallContent, ToolCallPreview } from './ToolCallOutput.tsx'
+import { ToolCallContent } from './ToolCallOutput.tsx'
 import {
   agentExecutionStatus,
   toolContentText,
@@ -27,25 +26,6 @@ import {
 } from './tool-protocol.ts'
 
 export { Markdown } from './Markdown.tsx'
-
-/** Reports whether an element is in the viewport plus a vertical rendering margin. */
-function useInView(ref: RefObject<HTMLElement | null>, enabled: boolean): boolean {
-  const [inView, setInView] = useState(false)
-  useEffect(() => {
-    if (!enabled) return
-    const el = ref.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry) setInView(entry.isIntersecting)
-      },
-      { rootMargin: '800px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [enabled, ref])
-  return inView
-}
 
 interface ToolCallCardProps {
   agentStatuses: ReadonlyMap<string, AgentExecutionStatus>
@@ -151,25 +131,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   const content = toolName === 'write' && !resultError && writeContent
     ? writeContent
     : displayedOutput
-  const isRenderable = display.kind === 'csv' || display.kind === 'markdown'
-    || display.kind === 'html' || display.kind === 'svg'
-  const hasRenderedPreview = isRenderable && hasResult && !expanded && !resultError
-  const hasCodePreview = display.kind === 'code' && hasResult && !expanded
-    && canHighlightFile(content)
-  const isNearViewport = useInView(cardRef, hasCodePreview || hasRenderedPreview)
   const contentError = resultError
-  const preview = useMemo(
-    () =>
-      display.kind === 'csv'
-        ? {
-          text: content.length > maxPreviewChars
-            ? `${content.slice(0, maxPreviewChars)}…`
-            : content,
-          remainingLineCount: 0,
-        }
-        : toolTextPreview(content),
-    [content, display.kind],
-  )
   const streamingArgs = streaming || interrupted ? streamingArguments ?? input : undefined
   const streamingTruncated = Boolean(streamingArgs && streamingArgs.length > maxPreviewChars)
   const streamingPreviewText = streamingArgs && streamingArgs.length > maxPreviewChars
@@ -435,33 +397,12 @@ export const ToolCallCard = memo(function ToolCallCard({
                   <ToolCallContent
                     call={{ name: toolName, args }}
                     content={content}
-                    onCollapse={() => setExpanded(false)}
                     renderingCode={renderingCode}
                     resultDetails={resultDetails}
                     showEditDiff={!contentError}
                   />
                 )
-                : (
-                  <ToolCallPreview
-                    call={{ name: toolName, args }}
-                    content={display.kind === 'csv' || display
-                          .kind === 'svg'
-                        || display
-                            .kind === 'html'
-                        || display
-                            .kind === 'markdown'
-                      ? content
-                      : preview
-                        .text}
-                    isNearViewport={isNearViewport}
-                    onClick={activate}
-                    previewText={preview
-                      .text}
-                    showHtmlPreview={!contentError}
-                    remainingLineCount={preview
-                      .remainingLineCount}
-                  />
-                )}
+                : null}
             </div>
           )}
         </div>

@@ -1,23 +1,12 @@
-import {
-  lazy,
-  Suspense,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react'
+import { lazy, Suspense, type CSSProperties } from 'react'
 import { canHighlightFile } from './file-preview.ts'
-import { Markdown } from './Markdown.tsx'
-import { csvSourcePreview, parseCsvPreview, type CsvPreview } from './csv-preview.ts'
+import { csvSourcePreview } from './csv-preview.ts'
 import { ToolCallEditDiff } from './ToolCallEditDiff.tsx'
 import {
   parseEditDiff,
   readContentDisplay,
   readStartingLineNumber,
-  stripScripts,
   toolEditChanges,
-  toolFilePath,
 } from './tool-presentation.ts'
 
 const LazyCodeHighlighter = lazy(() => import('./CodeHighlighter'))
@@ -45,171 +34,11 @@ function NumberedPre({ content, startLine }: { content: string; startLine: numbe
   )
 }
 
-/** Displays a clickable preview and retains its measured footprint while its expensive content is offscreen. */
-export function ToolCallPreview({
-  call,
-  content,
-  isNearViewport,
-  onClick,
-  previewText,
-  remainingLineCount,
-  showHtmlPreview,
-}: {
-  call: { name: string; args: unknown }
-  content: string
-  isNearViewport: boolean
-  onClick: () => void
-  previewText: string
-  remainingLineCount: number
-  showHtmlPreview: boolean
-}) {
-  const previewRef = useRef<HTMLButtonElement>(null)
-  const [renderedHeight, setRenderedHeight] = useState<number>()
-  useLayoutEffect(() => {
-    if (!isNearViewport) return
-    const preview = previewRef.current
-    if (!preview) return
-    const updateHeight = () => {
-      const height = preview.getBoundingClientRect().height
-      setRenderedHeight((current) => current === height ? current : height)
-    }
-    updateHeight()
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(preview)
-    return () => observer.disconnect()
-  }, [isNearViewport])
-
-  const display = call.name === 'read' || call.name === 'write'
-    ? readContentDisplay(call.args)
-    : { kind: 'text' as const }
-  const isRenderable = display.kind === 'csv' || display.kind === 'markdown'
-    || display.kind === 'html' || display.kind === 'svg'
-  const remainingLabel = isRenderable
-    ? 'View source'
-    : `Click to view ${remainingLineCount} more ${remainingLineCount === 1 ? 'line' : 'lines'}`
-  const showLabel = remainingLineCount > 0 || isRenderable
-  const highlightedCode = display.kind === 'code' && canHighlightFile(content)
-  const svgPreview = display.kind === 'svg' && content.trim().length > 0
-  const htmlPreview = display.kind === 'html' && showHtmlPreview
-  const markdownPreview = display.kind === 'markdown'
-  const csvPreview = display.kind === 'csv'
-  const parsedCsv = useMemo(
-    () => csvPreview && isNearViewport ? parseCsvPreview(content) : null,
-    [content, csvPreview, isNearViewport],
-  )
-  const filePath = toolFilePath(call.args)
-  const isReadOrWrite = call.name === 'read' || call.name === 'write'
-  const startLine = isReadOrWrite ? readStartingLineNumber(call.args) : 1
-  const plainContent = isNearViewport ? content : previewText
-  const plainPreview = csvPreview
-    ? <pre>{content.length > 400 ? `${content.slice(0, 400)}…` : content}</pre>
-    : isReadOrWrite
-    ? <NumberedPre content={plainContent} startLine={startLine} />
-    : <pre>{plainContent}</pre>
-
-  if (!isNearViewport && renderedHeight !== undefined) {
-    return (
-      <div
-        aria-hidden='true'
-        className='tool-call-preview-placeholder'
-        style={{ height: renderedHeight }}
-      />
-    )
-  }
-
-  return (
-    <button className='tool-call-preview' onClick={onClick} ref={previewRef} type='button'>
-      {csvPreview
-        ? isNearViewport && parsedCsv
-          ? <CsvTable preview={parsedCsv} />
-          : plainPreview
-        : markdownPreview
-        ? isNearViewport
-          ? (
-            <div className='tool-call-markdown-preview'>
-              <Markdown renderFrontmatter>{content}</Markdown>
-            </div>
-          )
-          : plainPreview
-        : htmlPreview
-        ? isNearViewport
-          ? (
-            <iframe
-              className='tool-call-html-preview'
-              sandbox=''
-              srcDoc={stripScripts(content)}
-              title={`HTML preview of ${filePath ?? 'file'}`}
-            />
-          )
-          : plainPreview
-        : svgPreview
-        ? isNearViewport
-          ? (
-            <img
-              alt={`SVG preview of ${filePath ?? 'file'}`}
-              className='tool-call-svg-preview'
-              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(content)}`}
-            />
-          )
-          : plainPreview
-        : highlightedCode && isNearViewport
-        ? (
-          <Suspense fallback={plainPreview}>
-            <LazyCodeHighlighter
-              className='tool-call-syntax'
-              customStyle={{ background: 'transparent', margin: 0, padding: '9px 10px 4px' }}
-              language={display.language}
-              PreTag='div'
-              showLineNumbers={isReadOrWrite}
-              startingLineNumber={isReadOrWrite ? startLine : undefined}
-              lineNumberStyle={isReadOrWrite ? lineNumberStyle : undefined}
-              wrapLongLines
-            >
-              {content}
-            </LazyCodeHighlighter>
-          </Suspense>
-        )
-        : plainPreview}
-      {showLabel && <span>{remainingLabel}</span>}
-    </button>
-  )
-}
-
-/** Renders a bounded CSV table without materializing the complete file in the DOM. */
-function CsvTable({ preview }: { preview: CsvPreview }) {
-  const [header, ...body] = preview.rows
-  if (!header) return <pre className='tool-call-csv-empty'>No CSV rows.</pre>
-
-  return (
-    <div className='tool-call-csv-preview'>
-      <table aria-label='CSV preview'>
-        <thead>
-          <tr>
-            {header.map((cell, index) => <th key={index} scope='col' title={cell}>{cell}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {body.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {row.map((cell, columnIndex) => <td key={columnIndex} title={cell}>{cell}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {preview.truncated && (
-        <p className='tool-call-csv-notice'>
-          Preview limited for performance.
-        </p>
-      )}
-    </div>
-  )
-}
-
-/** Displays a bounded CSV source while preserving the complete value for copying. */
-function CsvSourceContent({ content, onCollapse }: { content: string; onCollapse: () => void }) {
+/** Displays the complete CSV source while preserving the full value for copying. */
+function CsvSourceContent({ content }: { content: string }) {
   const source = csvSourcePreview(content)
   return (
-    <section className='tool-call-content tool-call-csv-source' onClick={onCollapse}>
+    <section className='tool-call-content tool-call-csv-source'>
       {source.truncated && (
         <p className='tool-call-notice'>Source preview limited to 20,000 characters.</p>
       )}
@@ -222,21 +51,19 @@ function CsvSourceContent({ content, onCollapse }: { content: string; onCollapse
 export function ToolCallContent({
   call,
   content,
-  onCollapse,
   renderingCode,
   resultDetails,
   showEditDiff,
 }: {
   call: { name: string; args: unknown }
   content: string
-  onCollapse: () => void
   renderingCode: boolean
   resultDetails?: unknown
   showEditDiff: boolean
 }) {
   if (renderingCode)
     return (
-      <section className='tool-call-content tool-call-loading' role='status' onClick={onCollapse}>
+      <section className='tool-call-content tool-call-loading' role='status'>
         <span aria-hidden='true' className='spinner' />Highlighting file…
       </section>
     )
@@ -245,7 +72,7 @@ export function ToolCallContent({
   const diffLines = diffString ? parseEditDiff(diffString) : []
   const changes = showEditDiff && call.name === 'edit' ? toolEditChanges(call.args) : []
   if (diffLines.length > 0 || changes.length > 0)
-    return <ToolCallEditDiff changes={changes} diffLines={diffLines} onCollapse={onCollapse} />
+    return <ToolCallEditDiff changes={changes} diffLines={diffLines} />
 
   const rawContentDisplay = call.name === 'read' || call.name === 'write'
     ? readContentDisplay(call.args)
@@ -256,7 +83,7 @@ export function ToolCallContent({
     ? ({ kind: 'code' as const, language: 'markdown' })
     : rawContentDisplay
   if (rawContentDisplay.kind === 'csv')
-    return <CsvSourceContent content={content} onCollapse={onCollapse} />
+    return <CsvSourceContent content={content} />
 
   const isRenderable = rawContentDisplay.kind === 'markdown'
     || rawContentDisplay.kind === 'html'
@@ -270,7 +97,7 @@ export function ToolCallContent({
   const startLine = isReadOrWrite ? readStartingLineNumber(call.args) : 1
   if (display.kind === 'code' && canHighlightFile(content))
     return (
-      <section className={contentClassName} onClick={onCollapse}>
+      <section className={contentClassName}>
         <Suspense
           fallback={isReadOrWrite
             ? <NumberedPre content={content} startLine={startLine} />
@@ -293,7 +120,7 @@ export function ToolCallContent({
     )
   if (display.kind === 'code')
     return (
-      <section className={contentClassName} onClick={onCollapse}>
+      <section className={contentClassName}>
         <p className='tool-call-notice'>Highlighting disabled beyond 50,000 characters.</p>
         {isReadOrWrite
           ? <NumberedPre content={content} startLine={startLine} />
@@ -304,7 +131,7 @@ export function ToolCallContent({
     ? 'tool-call-content tool-call-content-scrollable'
     : 'tool-call-content'
   return (
-    <section className={plainSectionClass} onClick={onCollapse}>
+    <section className={plainSectionClass}>
       {isReadOrWrite
         ? <NumberedPre content={content} startLine={startLine} />
         : <pre>{content}</pre>}

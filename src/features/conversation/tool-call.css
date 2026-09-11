@@ -254,16 +254,6 @@
   text-align: left;
   cursor: pointer;
 }
-.tool-call-preview-placeholder {
-  width: 100%;
-  box-sizing: border-box;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--accent) 2%,
-    color-mix(in srgb, var(--surface) 97%, var(--canvas))
-  );
-}
 .tool-call-preview:hover {
   background: color-mix(
     in srgb,
@@ -367,7 +357,6 @@
     var(--accent) 2%,
     color-mix(in srgb, var(--surface) 97%, var(--canvas))
   );
-  cursor: pointer;
 }
 .tool-call-edit-diff {
   display: grid;

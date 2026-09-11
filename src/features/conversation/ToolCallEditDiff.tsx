@@ -20,17 +20,16 @@ function DiffLineContent(
 
 /** Displays each replacement from an edit call, preferring Pi's line-numbered diff when available. */
 export function ToolCallEditDiff(
-  { changes, diffLines, onCollapse }: {
+  { changes, diffLines }: {
     changes: ReturnType<typeof toolEditChanges>
     diffLines: EditDiffLine[]
-    onCollapse: () => void
   },
 ) {
   if (diffLines.length > 0) {
     const displayLines = editDiffDisplayLines(diffLines)
 
     return (
-      <section className='tool-call-content tool-call-edit-diff' onClick={onCollapse}>
+      <section className='tool-call-content tool-call-edit-diff'>
         <section className='tool-call-edit-change'>
           {displayLines.map((line, j) => {
             const sign = line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' '
@@ -48,7 +47,7 @@ export function ToolCallEditDiff(
   }
 
   return (
-    <section className='tool-call-content tool-call-edit-diff' onClick={onCollapse}>
+    <section className='tool-call-content tool-call-edit-diff'>
       {changes.map((change, index) => {
         const segments = intraLineDiff(change.oldText, change.newText)
         return (
