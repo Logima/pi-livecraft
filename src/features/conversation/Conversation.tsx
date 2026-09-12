@@ -321,7 +321,11 @@ export function Conversation(
   }
 
   function handleConversationWheel(event: WheelEvent<HTMLDivElement>): void {
-    if (event.deltaY < 0) markUpwardScrollIntent()
+    if (event.deltaY < 0) {
+      // Wheel events are the user's intent; stop before a delayed scroll event or reflow can pin the viewport again.
+      suspendAutoScroll()
+      upwardScrollIntentRef.current = false
+    }
   }
 
   function handleConversationKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
