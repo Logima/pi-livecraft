@@ -22,6 +22,7 @@ import {
   ensureCompactCommand,
   ensureSessionCommands,
   formatTokens,
+  formatTokensPerSecond,
   isCommandDraft,
   isCompactCommandDraft,
   isNewSessionCommandDraft,
@@ -48,6 +49,8 @@ const improveOptions = [
 export const Composer = memo(function Composer({
   session,
   snapshot,
+  requestDurations,
+  responseSpeed,
   agentBusy,
   agentOptions,
   agentOptionsLoading,
@@ -75,6 +78,8 @@ export const Composer = memo(function Composer({
 }: {
   session: SessionSummary
   snapshot: SessionSnapshot
+  requestDurations: ReadonlyMap<number, number>
+  responseSpeed: number | null
   agentBusy: boolean
   agentOptions: string[]
   agentOptionsLoading: boolean
@@ -475,6 +480,9 @@ export const Composer = memo(function Composer({
     ? `${formatTokens(contextUsage.tokens)}/${formatTokens(contextUsage.contextWindow)}`
     : 'Unavailable'
   const cost = typeof stats?.cost === 'number' ? `$${stats.cost.toFixed(2)}` : '—'
+  const speed = responseSpeed === null
+    ? formatTokensPerSecond(snapshot.messages, requestDurations)
+    : `${responseSpeed.toFixed(1)} tok/s`
   const contextClass = typeof contextUsage?.percent === 'number'
     ? contextUsage.percent >= 40
       ? 'context-danger'
@@ -731,6 +739,7 @@ export const Composer = memo(function Composer({
           running={running}
           compacting={compacting}
           cost={cost}
+          speed={speed}
           contextClass={contextClass}
           contextTokens={contextTokens}
           contextPercent={contextPercent}

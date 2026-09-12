@@ -29,7 +29,7 @@ All data arrives through props. The Composer never calls the backend directly.
 | `selects/BehaviorSelect.tsx` | Steer / Follow-up toggle, only rendered while Pi is running |
 | `status-bar/ComposerStatusBar.tsx` | Layout container for session info and stats |
 | `status-bar/SessionInfo.tsx` | Session name, cwd, active status dot |
-| `status-bar/SessionStats.tsx` | Cost and context usage with progress bar |
+| `status-bar/SessionStats.tsx` | Cost, latest response speed, and context usage with progress bar |
 
 ## Internal state
 

@@ -4,11 +4,36 @@ import {
   ensureCompactCommand,
   commandTakesArguments,
   ensureSessionCommands,
+  formatTokensPerSecond,
   isCommandDraft,
   isCompactCommandDraft,
   isNewSessionCommandDraft,
   isReloadCommandDraft,
 } from '../src/features/composer/composer-utils.ts'
+
+test('formats the latest completed response throughput', () => {
+  const messages = [
+    { role: 'user', timestamp: 1_000, content: 'Hello' },
+    { role: 'assistant', usage: { output: 125, input: 400 }, content: 'Hi' },
+  ]
+  assert.equal(formatTokensPerSecond(messages, new Map([[1_000, 2_500]])), '50.0 tok/s')
+})
+
+test('includes tool-result output for turns without visible assistant text', () => {
+  const messages = [
+    { role: 'user', timestamp: 1_000, content: 'Inspect the project' },
+    { role: 'assistant', usage: { output: 12 }, content: [{ type: 'toolCall' }] },
+    { role: 'toolResult', usage: { output: 88 }, content: 'Files' },
+  ]
+  assert.equal(formatTokensPerSecond(messages, new Map([[1_000, 2_000]])), '50.0 tok/s')
+})
+
+test('hides throughput when timing or output usage is unavailable', () => {
+  assert.equal(
+    formatTokensPerSecond([{ role: 'user', timestamp: 1 }, { role: 'assistant' }], new Map()),
+    '—',
+  )
+})
 
 test('detects only slash commands exposed by Pi', () => {
   const commands = [{ name: 'agent' }, { name: 'session-name' }]

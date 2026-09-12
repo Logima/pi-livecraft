@@ -57,6 +57,9 @@ export function useConversationRuntime(
   const [observedRequestDurations, setObservedRequestDurations] = useState<
     ReadonlyMap<number, number>
   >(new Map())
+  const [observedResponseSpeeds, setObservedResponseSpeeds] = useState<ReadonlyMap<string, number>>(
+    new Map(),
+  )
   const selectedIdRef = useRef(selectedId)
   const snapshotSessionIdRef = useRef('')
   const snapshotRefreshVersionRef = useRef(0)
@@ -200,6 +203,16 @@ export function useConversationRuntime(
         })
       }
       if (event.type === 'agent_start') requestStartedAtRef.current = performance.now()
+      if (event.type === 'agent_end' && event.willRetry !== true) {
+        const startedAt = requestStartedAtRef.current
+        const output = outputTokensInAgentEnd(event)
+        if (startedAt !== undefined && output > 0) {
+          setObservedResponseSpeeds((current) => new Map(current).set(
+            sessionId,
+            output / ((performance.now() - startedAt) / 1000),
+          ))
+        }
+      }
       const streamedToolCall = toolCallInUpdate(event)
       if (streamedToolCall) {
         flushLiveUpdates()
@@ -313,7 +326,8 @@ export function useConversationRuntime(
     setActivity(null)
     setToolExecutions([])
     setObservedToolDurations(new Map())
-    setObservedRequestDurations(new Map())
+    // Request durations are keyed by user-message timestamp, so retaining them lets the
+    // composer restore the latest speed when the user switches back to this session.
     toolStartedAtRef.current.clear()
     requestStartedAtRef.current = undefined
     void refreshSnapshot(selectedId)
@@ -382,6 +396,7 @@ export function useConversationRuntime(
     handlePiEvent,
     liveMessages,
     observedRequestDurations,
+    observedResponseSpeed: observedResponseSpeeds.get(selectedId) ?? null,
     observedToolDurations,
     pendingSteering,
     refreshSnapshot,
@@ -392,6 +407,17 @@ export function useConversationRuntime(
     snapshotSessionId,
     toolExecutions,
   }
+}
+
+/** Sums provider-reported output tokens from one low-level agent run. */
+function outputTokensInAgentEnd(event: JsonObject): number {
+  if (!Array.isArray(event.messages)) return 0
+  return event.messages.reduce((total, message) => {
+    if (!isObject(message) || (message.role !== 'assistant' && message.role !== 'toolResult'))
+      return total
+    const usage = isObject(message.usage) ? message.usage.output : undefined
+    return typeof usage === 'number' && Number.isFinite(usage) ? total + usage : total
+  }, 0)
 }
 
 /** Returns the timestamp of the most recent user message, if any. */

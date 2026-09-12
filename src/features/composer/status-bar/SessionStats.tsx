@@ -1,7 +1,8 @@
-/** Displays session cost and context window usage with a progress bar. */
+/** Displays session cost, response speed, and context window usage with a progress bar. */
 export function SessionStats(
-  { cost, contextClass, contextTokens, contextPercent, contextPercentValue }: {
+  { cost, speed, contextClass, contextTokens, contextPercent, contextPercentValue }: {
     cost: string
+    speed: string
     contextClass: string
     contextTokens: string
     contextPercent: string
@@ -13,6 +14,10 @@ export function SessionStats(
       <span>
         <b>Cost</b>
         {cost}
+      </span>
+      <span>
+        <b>Speed</b>
+        {speed}
       </span>
       <span className={contextClass}>
         <b>Context</b>

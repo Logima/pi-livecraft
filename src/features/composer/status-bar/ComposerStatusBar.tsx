@@ -10,6 +10,7 @@ export const ComposerStatusBar = memo(function ComposerStatusBar(
     running,
     compacting,
     cost,
+    speed,
     contextClass,
     contextTokens,
     contextPercent,
@@ -19,6 +20,7 @@ export const ComposerStatusBar = memo(function ComposerStatusBar(
     running: boolean
     compacting: boolean
     cost: string
+    speed: string
     contextClass: string
     contextTokens: string
     contextPercent: string
@@ -36,6 +38,7 @@ export const ComposerStatusBar = memo(function ComposerStatusBar(
         : <SessionInfo name={session.name} cwd={session.cwd} active={running} />}
       <SessionStats
         cost={cost}
+        speed={speed}
         contextClass={contextClass}
         contextTokens={contextTokens}
         contextPercent={contextPercent}

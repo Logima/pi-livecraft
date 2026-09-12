@@ -1,14 +1,41 @@
 import type { JsonObject } from '../../../shared/types.ts'
+import { isObject } from '../../../shared/is-object.ts'
 
 /** Makes technical values readable in composer labels without changing RPC values. */
 export function capitalizeLabel(value: string): string {
   return value ? `${value[0].toUpperCase()}${value.slice(1)}` : value
 }
 
-export { isObject } from '../../../shared/is-object.ts'
+export { isObject }
 
 export function formatTokens(value: number): string {
   return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value)
+}
+
+/** Formats the latest turn throughput using Pi's cumulative output counters. */
+export function formatTokensPerSecond(
+  messages: JsonObject[],
+  requestDurations: ReadonlyMap<number, number>,
+): string {
+  let userIndex = -1
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      userIndex = index
+      break
+    }
+  }
+  if (userIndex < 0) return '—'
+
+  const timestamp = messages[userIndex]?.timestamp
+  const duration = typeof timestamp === 'number' ? requestDurations.get(timestamp) : undefined
+  if (duration === undefined || duration <= 0) return '—'
+
+  const output = messages.slice(userIndex + 1).reduce((total, message) => {
+    if (message?.role !== 'assistant' && message?.role !== 'toolResult') return total
+    const usage = isObject(message.usage) ? message.usage.output : undefined
+    return typeof usage === 'number' && Number.isFinite(usage) ? total + usage : total
+  }, 0)
+  return output > 0 ? `${(output * 1000 / duration).toFixed(1)} tok/s` : '—'
 }
 
 /** Returns true when the draft starts with a slash command exposed by Pi. */

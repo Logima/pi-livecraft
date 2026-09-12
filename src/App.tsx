@@ -406,6 +406,7 @@ function App() {
     handlePiEvent,
     liveMessages,
     observedRequestDurations,
+    observedResponseSpeed,
     observedToolDurations,
     pendingSteering,
     refreshSnapshot,
@@ -1312,6 +1313,8 @@ function App() {
                       key={selectedSession.id}
                       session={selectedSession}
                       snapshot={snapshot}
+                      requestDurations={observedRequestDurations}
+                      responseSpeed={observedResponseSpeed}
                       agentBusy={Boolean(agentBusy[selectedSession.id])}
                       agentOptions={agentOptions[selectedSession.id] ?? emptyAgentOptions}
                       agentOptionsLoading={Boolean(agentOptionsLoading[selectedSession.id])}
