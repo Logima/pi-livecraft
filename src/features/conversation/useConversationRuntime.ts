@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import { getSnapshot } from '../../api.ts'
 import {
   assistantMessageAfterEvent,
@@ -81,7 +81,7 @@ export function useConversationRuntime(
     pendingLiveMessagesRef.current = undefined
     if (pending) {
       liveMessagesRef.current = pending
-      setLiveMessages(pending)
+      startTransition(() => setLiveMessages(pending))
     }
   }, [])
 
