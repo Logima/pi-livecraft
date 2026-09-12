@@ -1,4 +1,5 @@
 import {
+  memo,
   startTransition,
   useCallback,
   useEffect,
@@ -36,7 +37,7 @@ import {
 } from './conversation-scroll.ts'
 
 /** Assembles history, the live stream, and tool executions according to the selected detail level. */
-export function Conversation(
+export const Conversation = memo(function Conversation(
   {
     activity,
     agentName,
@@ -551,7 +552,7 @@ export function Conversation(
       </button>
     </section>
   )
-}
+})
 
 export { ActivityIndicator } from './ActivityIndicator.tsx'
 

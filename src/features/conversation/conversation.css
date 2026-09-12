@@ -10,6 +10,12 @@
 .conversation-content {
   min-width: 0;
 }
+/* Keep off-screen turns mounted for navigation while skipping their layout and paint work. */
+.conversation-content > .conversation-entry,
+.conversation-content > [data-message-index] {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 120px;
+}
 .conversation-content .content {
   cursor: text;
 }

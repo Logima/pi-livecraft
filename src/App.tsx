@@ -823,6 +823,10 @@ function App() {
     (agent: string) => activateAgent(selectedId, agent),
     [activateAgent, selectedId],
   )
+  const handleComposerRequestAgentOptions = useCallback(
+    () => fetchAgentOptions(selectedId),
+    [fetchAgentOptions, selectedId],
+  )
   /** Executes a composer command and synchronizes capabilities affected by it. */
   const handleComposerCommand = useCallback(async (command: JsonObject) => {
     const result = await sendPiCommand(selectedId, command)
@@ -1313,7 +1317,7 @@ function App() {
                       agentOptionsLoading={Boolean(agentOptionsLoading[selectedSession.id])}
                       selectedAgent={selectedSession.activeAgent ?? ''}
                       onAgentChange={handleComposerAgentChange}
-                      onRequestAgentOptions={() => fetchAgentOptions(selectedSession.id)}
+                      onRequestAgentOptions={handleComposerRequestAgentOptions}
                       onCommand={handleComposerCommand}
                       onNewSession={createNewSession}
                       commands={snapshot.commands}
