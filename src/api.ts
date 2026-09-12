@@ -60,6 +60,11 @@ export function subscribeManagerEvents(
   return () => source.close()
 }
 
+/** Builds a browser URL for a file relative to the active workspace. */
+export function workspaceFileUrl(cwd: string, path: string): string {
+  return `/api/files/content?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(path)}`
+}
+
 export async function listSessions(): Promise<SessionSummary[]> {
   return request<SessionSummary[]>('/api/sessions')
 }

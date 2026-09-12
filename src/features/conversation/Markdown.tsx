@@ -2,6 +2,7 @@ import { lazy, memo, Suspense, useEffect, useRef, useState, type ReactNode } fro
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CopyablePre } from './CodeBlock.tsx'
+import { workspaceFileUrl } from '../../api.ts'
 import { parseMarkdownFrontmatter } from './markdown-frontmatter.ts'
 
 const LazyCodeHighlighter = lazy(() => import('./CodeHighlighter'))
@@ -86,11 +87,13 @@ export const Markdown = memo(function Markdown(
     copyablePre = false,
     onError,
     renderFrontmatter = false,
+    workspacePath,
   }: {
     children: string
     copyablePre?: boolean
     onError?: (cause: unknown) => void
     renderFrontmatter?: boolean
+    workspacePath?: string
   },
 ) {
   const frontmatter = renderFrontmatter ? parseMarkdownFrontmatter(children) : null
@@ -120,8 +123,14 @@ export const Markdown = memo(function Markdown(
       )}
       <ReactMarkdown
         components={{
+          a: ({ href, children, ...props }) => (
+            <a href={workspaceRelativeFileUrl(href, workspacePath)} {...props}>{children}</a>
+          ),
           code: ({ children: code, className }) => (
             <MarkdownCode className={className}>{code}</MarkdownCode>
+          ),
+          img: ({ src, alt, ...props }) => (
+            <img alt={alt ?? ''} src={workspaceRelativeFileUrl(src, workspacePath)} {...props} />
           ),
           pre: ({ children: code }) =>
             copyablePre
@@ -135,3 +144,17 @@ export const Markdown = memo(function Markdown(
     </>
   )
 })
+
+/** Rewrites workspace-relative Markdown URLs to the validated local file endpoint. */
+function workspaceRelativeFileUrl(value: string | undefined, workspacePath: string | undefined): string | undefined {
+  if (!value || !workspacePath || value.startsWith('#') || value.startsWith('//')) return value
+  try {
+    const url = new URL(value, 'http://localhost/')
+    if (url.protocol !== 'http:' || url.hostname !== 'localhost') return value
+    const path = decodeURIComponent(url.pathname.replace(/^\//, ''))
+    if (!path) return value
+    return `${workspaceFileUrl(workspacePath, path)}${url.hash}`
+  } catch {
+    return value
+  }
+}

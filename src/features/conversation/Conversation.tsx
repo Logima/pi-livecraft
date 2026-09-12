@@ -377,7 +377,12 @@ export const Conversation = memo(function Conversation(
                 key={entry.key}
               >
                 {isVisibleConversationMessage(message) && (
-                  <MessageCard message={message} onError={onError} onFork={onFork} />
+                  <MessageCard
+                    message={message}
+                    onError={onError}
+                    onFork={onFork}
+                    workspacePath={workingDirectory}
+                  />
                 )}
                 {calls.map((call) => {
                   const execution = executionsByCallId.get(call.id)
@@ -437,6 +442,7 @@ export const Conversation = memo(function Conversation(
                         message={part.message}
                         onError={onError}
                         onFork={onFork}
+                        workspacePath={workingDirectory}
                       />
                     )
                     : null
@@ -511,7 +517,7 @@ export const Conversation = memo(function Conversation(
             key={`${message}-${index}`}
           >
             <div className='content'>
-              <Markdown>{message || 'Image attached'}</Markdown>
+              <Markdown workspacePath={workingDirectory}>{message || 'Image attached'}</Markdown>
             </div>
             <span className='pending-steering-status' role='status'>
               <i aria-hidden='true' />Waiting to steer…

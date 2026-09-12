@@ -1,6 +1,6 @@
 import { createReadStream } from 'node:fs'
 import { readdir, realpath, stat } from 'node:fs/promises'
-import { dirname, extname, resolve, sep } from 'node:path'
+import { basename, dirname, extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { ManagerClient } from './manager-client.ts'
@@ -199,6 +199,24 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       200,
       await getGitFileDiff(cwd, path, url.searchParams.get('commit') ?? undefined),
     )
+    return
+  }
+
+  if (method === 'GET' && url.pathname === '/api/files/content') {
+    const cwd = await resolveWorkingDirectory(url.searchParams.get('cwd') ?? '~/.pi')
+    const path = url.searchParams.get('path')
+    if (!path) throw new HttpError(400, 'File path is required')
+    try {
+      const filePath = await resolveWorkspaceFilePath(cwd, path)
+      response.writeHead(200, {
+        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(basename(filePath))}`,
+        'Content-Type': contentType(filePath),
+      })
+      createReadStream(filePath).pipe(response)
+    } catch (error) {
+      if (error instanceof WorkspaceFileError) throw new HttpError(error.status, error.message)
+      throw error
+    }
     return
   }
 
@@ -609,10 +627,22 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 function contentType(filePath: string): string {
   const types: Record<string, string> = {
     '.css': 'text/css; charset=utf-8',
+    '.csv': 'text/csv; charset=utf-8',
+    '.gif': 'image/gif',
     '.html': 'text/html; charset=utf-8',
+    '.ico': 'image/x-icon',
+    '.jpeg': 'image/jpeg',
+    '.jpg': 'image/jpeg',
     '.js': 'text/javascript; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
+    '.md': 'text/markdown; charset=utf-8',
+    '.markdown': 'text/markdown; charset=utf-8',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
     '.svg': 'image/svg+xml',
+    '.text': 'text/plain; charset=utf-8',
+    '.txt': 'text/plain; charset=utf-8',
+    '.webp': 'image/webp',
   }
   return types[extname(filePath)] ?? 'application/octet-stream'
 }

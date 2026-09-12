@@ -10,26 +10,35 @@ import { formatTokens, formatTurnCost, type MessageUsage } from './message-usage
 /** Renders a visible protocol message with the default or custom presentation. */
 export const MessageCard = memo(
   function MessageCard(
-    { message, onError, onFork }: {
+    { message, onError, onFork, workspacePath }: {
       message: JsonObject
       onError: (cause: unknown) => void
       onFork: (entryId: string) => Promise<boolean>
+      workspacePath: string
     },
   ) {
     if (message.role === 'custom' && message.customType === 'pi-notification')
       return <PiNotificationMessage message={message} />
     if (message.role === 'custom' && typeof message.customType === 'string')
-      return <DefaultCustomMessage message={message} />
-    return <DefaultMessageCard message={message} onError={onError} onFork={onFork} />
+      return <DefaultCustomMessage message={message} workspacePath={workspacePath} />
+    return (
+      <DefaultMessageCard
+        message={message}
+        onError={onError}
+        onFork={onFork}
+        workspacePath={workspacePath}
+      />
+    )
   },
 )
 
 const DefaultMessageCard = memo(
   function DefaultMessageCard(
-    { message, onError, onFork }: {
+    { message, onError, onFork, workspacePath }: {
       message: JsonObject
       onError: (cause: unknown) => void
       onFork: (entryId: string) => Promise<boolean>
+      workspacePath: string
     },
   ) {
     const role = String(message.role)
@@ -48,7 +57,7 @@ const DefaultMessageCard = memo(
           </div>
         )}
         <div className='content'>
-          {renderContent(message.content ?? message.output, message.role, onError)}
+          {renderContent(message.content ?? message.output, message.role, onError, workspacePath)}
         </div>
         {role === 'user' && time && (
           <time
@@ -74,9 +83,15 @@ function PiNotificationMessage({ message }: { message: JsonObject }) {
 }
 
 /** Renders an unknown custom message without interpreting extension-specific details. */
-function DefaultCustomMessage({ message }: { message: JsonObject & { customType?: unknown } }) {
+function DefaultCustomMessage({
+  message,
+  workspacePath,
+}: {
+  message: JsonObject & { customType?: unknown }
+  workspacePath: string
+}) {
   const content = hasVisibleContent(message.content)
-    ? renderContent(message.content, message.role)
+    ? renderContent(message.content, message.role, undefined, workspacePath)
     : <p>Message has no displayable content.</p>
   return (
     <article className='message custom-message'>
@@ -170,9 +185,14 @@ function renderContent(
   content: unknown,
   role: unknown,
   onError?: (cause: unknown) => void,
+  workspacePath?: string,
 ): ReactNode {
   if (typeof content === 'string')
-    return <Markdown copyablePre={role === 'assistant'} onError={onError}>{content}</Markdown>
+    return (
+      <Markdown copyablePre={role === 'assistant'} onError={onError} workspacePath={workspacePath}>
+        {content}
+      </Markdown>
+    )
   if (!Array.isArray(content)) return null
   return (
     <>
@@ -203,6 +223,7 @@ function renderContent(
               copyablePre={role === 'assistant'}
               key={`text-${contentIndex}`}
               onError={onError}
+              workspacePath={workspacePath}
             >
               {part.text}
             </Markdown>
