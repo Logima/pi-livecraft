@@ -30,6 +30,7 @@ const emptySnapshot: SessionSnapshot = {
 }
 
 const snapshotRefreshDelayMs = 100
+const liveUpdateIntervalMs = 80
 
 interface SnapshotRefreshRequest {
   sessionId: string
@@ -68,15 +69,15 @@ export function useConversationRuntime(
   const liveMessageIndexRef = useRef(-1)
   const pendingLiveMessagesRef = useRef<LiveMessage[] | undefined>(undefined)
   const historyLengthRef = useRef(0)
-  const liveUpdateFrameRef = useRef<number | undefined>(undefined)
+  const liveUpdateTimerRef = useRef<number | undefined>(undefined)
   selectedIdRef.current = selectedId
   historyLengthRef.current = snapshot.messages.length
 
-  /** Applies the latest streamed assistant messages at most once per rendered frame. */
+  /** Applies the latest streamed assistant messages at a bounded rate. */
   const flushLiveUpdates = useCallback(() => {
-    if (liveUpdateFrameRef.current !== undefined)
-      window.cancelAnimationFrame(liveUpdateFrameRef.current)
-    liveUpdateFrameRef.current = undefined
+    if (liveUpdateTimerRef.current !== undefined)
+      window.clearTimeout(liveUpdateTimerRef.current)
+    liveUpdateTimerRef.current = undefined
     const pending = pendingLiveMessagesRef.current
     pendingLiveMessagesRef.current = undefined
     if (pending) {
@@ -92,15 +93,15 @@ export function useConversationRuntime(
     const next = [...(pendingLiveMessagesRef.current ?? liveMessagesRef.current)]
     next[index] = { ...next[index], message }
     pendingLiveMessagesRef.current = next
-    if (liveUpdateFrameRef.current !== undefined) return
-    liveUpdateFrameRef.current = window.requestAnimationFrame(flushLiveUpdates)
+    if (liveUpdateTimerRef.current !== undefined) return
+    liveUpdateTimerRef.current = window.setTimeout(flushLiveUpdates, liveUpdateIntervalMs)
   }, [flushLiveUpdates])
 
   /** Clears streamed assistant messages when the displayed session changes. */
   const clearLiveMessages = useCallback(() => {
-    if (liveUpdateFrameRef.current !== undefined)
-      window.cancelAnimationFrame(liveUpdateFrameRef.current)
-    liveUpdateFrameRef.current = undefined
+    if (liveUpdateTimerRef.current !== undefined)
+      window.clearTimeout(liveUpdateTimerRef.current)
+    liveUpdateTimerRef.current = undefined
     pendingLiveMessagesRef.current = undefined
     liveMessagesRef.current = []
     liveMessageIndexRef.current = -1
