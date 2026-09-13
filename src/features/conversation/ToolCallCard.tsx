@@ -24,13 +24,16 @@ import {
   toolContentText,
   type AgentExecutionStatus,
 } from './tool-protocol.ts'
+import { resolveToolCallAgentId } from './tool-call-agent.ts'
 
 export { Markdown } from './Markdown.tsx'
+export { resolveToolCallAgentId } from './tool-call-agent.ts'
 
 interface ToolCallCardProps {
   agentStatuses: ReadonlyMap<string, AgentExecutionStatus>
   animateLiveChanges?: boolean
   args: unknown
+  bridgeAgentId?: string
   hasResult: boolean
   id: string
   durationMs?: number
@@ -56,6 +59,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   agentStatuses,
   animateLiveChanges = false,
   args,
+  bridgeAgentId,
   hasResult,
   id,
   durationMs,
@@ -139,13 +143,14 @@ export const ToolCallCard = memo(function ToolCallCard({
     : streamingArgs
   const renderingCode = display.kind === 'code' && canHighlightFile(content) && expanded
     && !codeRendered
-  const agentId = toolName === 'Agent' && isObject(resultDetails)
-      && typeof resultDetails.agentId === 'string'
-    ? resultDetails.agentId
+  const agentId = toolName === 'Agent'
+    ? resolveToolCallAgentId(resultDetails, bridgeAgentId)
     : undefined
   const detailStatus = isObject(resultDetails) ? resultDetails.status : undefined
   const agentStatus = agentId
-    ? agentStatuses.get(agentId) ?? agentExecutionStatus(detailStatus)
+    ? bridgeAgentId
+      ? 'running'
+      : agentStatuses.get(agentId) ?? agentExecutionStatus(detailStatus)
     : undefined
 
   /** Force-kills the active tool's child process without aborting the Pi session. */

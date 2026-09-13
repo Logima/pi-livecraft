@@ -25,11 +25,13 @@ import {
   type ToolExecution,
 } from './tool-protocol.ts'
 import type { SessionAnalysisTarget } from '../session-analysis/session-analysis.ts'
+import type { SubagentBridgeSnapshot } from './subagent-bridge.ts'
 import { ActivityIndicator } from './ActivityIndicator.tsx'
 import { Markdown } from './Markdown.tsx'
 import { MessageCard, TurnUsage } from './MessageCard.tsx'
 import { isVisibleConversationMessage } from './message-display.ts'
 import { ToolCallCard } from './ToolCallCard.tsx'
+import { bridgeAgentIdsByToolCallId } from './tool-call-agent.ts'
 import {
   conversationHistoryStart,
   resumesAutoScrollAfterDownwardScroll,
@@ -41,6 +43,7 @@ export const Conversation = memo(function Conversation(
   {
     activity,
     agentName,
+    bridgeSnapshot,
     messages,
     liveMessages,
     conversationView,
@@ -58,6 +61,7 @@ export const Conversation = memo(function Conversation(
   }: {
     activity: Activity | null
     agentName?: string
+    bridgeSnapshot?: SubagentBridgeSnapshot
     messages: JsonObject[]
     liveMessages: LiveMessage[]
     conversationView: 'simple' | 'semi-detailed' | 'detailed'
@@ -96,6 +100,10 @@ export const Conversation = memo(function Conversation(
   const executionsByCallId = useMemo(
     () => new Map(toolExecutions.map((execution) => [execution.id, execution])),
     [toolExecutions],
+  )
+  const bridgeAgentIds = useMemo(
+    () => bridgeAgentIdsByToolCallId(toolExecutions, bridgeSnapshot),
+    [bridgeSnapshot, toolExecutions],
   )
   const agentStatuses = useMemo(
     () =>
@@ -394,6 +402,7 @@ export const Conversation = memo(function Conversation(
                       hasResult={result !== undefined}
                       semiDetailed={semiDetailed}
                       id={call.id}
+                      bridgeAgentId={bridgeAgentIds.get(call.id)}
                       durationMs={toolDurations.get(call.id)}
                       interrupted={execution?.status === 'interrupted'}
                       key={call.id}
@@ -457,6 +466,7 @@ export const Conversation = memo(function Conversation(
                     hasResult={result !== undefined}
                     semiDetailed={semiDetailed}
                     id={part.call.id}
+                    bridgeAgentId={bridgeAgentIds.get(part.call.id)}
                     durationMs={toolDurations.get(part.call.id)}
                     interrupted={execution?.status === 'interrupted'}
                     key={part.call.id}
@@ -493,6 +503,7 @@ export const Conversation = memo(function Conversation(
               hasResult={execution.result !== undefined}
               semiDetailed={semiDetailed}
               id={execution.id}
+              bridgeAgentId={bridgeAgentIds.get(execution.id)}
               durationMs={toolDurations.get(execution.id)}
               interrupted={execution.status === 'interrupted'}
               key={execution.id}

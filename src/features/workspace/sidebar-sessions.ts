@@ -13,6 +13,15 @@ export interface WorkspaceSessionCounts {
   unread: number
 }
 
+export interface WorkspaceSidebarEntry {
+  path: string
+  displayName: string
+  sessions: SessionSummary[]
+  pinnedSessions: PinnedSession[]
+}
+
+export const workspaceActivityPreviewLimit = 3
+
 /** Counts active and finished-unread sessions belonging to one workspace. */
 export function workspaceSessionCounts(
   sessions: readonly SessionSummary[],
@@ -25,7 +34,7 @@ export function workspaceSessionCounts(
       (counts, session) => ({
         running: counts.running + Number(session.status === 'running'),
         unread: counts.unread + Number(
-          completedSessionIds.has(session.sessionPath ?? session.id)
+          completedSessionIds.has(session.sessionPath ?? session.id),
         ),
       }),
       { running: 0, unread: 0 },
@@ -33,6 +42,82 @@ export function workspaceSessionCounts(
 }
 
 export type PinnedSession = Pick<RecentSession, 'cwd' | 'name' | 'sessionPath'>
+
+/** Returns the final directory component for POSIX, home, and Windows-style paths. */
+export function workspaceBasename(path: string): string {
+  const trimmed = path.trim()
+  if (!trimmed) return path
+  const withoutTrailingSeparators = trimmed.replace(/[\\/]+$/, '')
+  if (!withoutTrailingSeparators) return trimmed
+  const separatorIndex = Math.max(
+    withoutTrailingSeparators.lastIndexOf('/'),
+    withoutTrailingSeparators.lastIndexOf('\\'),
+  )
+  return withoutTrailingSeparators.slice(separatorIndex + 1) || withoutTrailingSeparators
+}
+
+/** Adds a parent path only where identical directory names would be ambiguous. */
+export function workspaceDisplayName(path: string, workspacePaths: readonly string[]): string {
+  const basename = workspaceBasename(path)
+  const duplicate = workspacePaths.some(
+    (candidate) => candidate !== path && workspaceBasename(candidate) === basename,
+  )
+  if (!duplicate) return basename
+  const trimmed = path.trim().replace(/[\\/]+$/, '')
+  const separatorIndex = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  const parent = separatorIndex >= 0 ? trimmed.slice(0, separatorIndex) : ''
+  return `${basename} · ${parent || path}`
+}
+
+/** Projects recent workspaces and attention-worthy background sessions into one sorted list. */
+export function workspaceSidebarEntries(
+  workspacePath: string,
+  recentWorkspacePaths: readonly string[],
+  sessions: readonly SessionSummary[],
+  compactingSessionIds: ReadonlySet<string>,
+  completedSessionIds: ReadonlySet<string>,
+  pinnedSessions: readonly PinnedSession[] = [],
+): WorkspaceSidebarEntry[] {
+  const otherSessions = otherWorkspaceSessions(
+    [...sessions],
+    workspacePath,
+    compactingSessionIds,
+    completedSessionIds,
+    new Set(pinnedSessions.map((session) => session.sessionPath)),
+  )
+  const otherPinnedSessions = otherWorkspacePinnedSessions(
+    pinnedSessions,
+    [...sessions],
+    workspacePath,
+  )
+  const paths = new Set([
+    workspacePath,
+    ...recentWorkspacePaths,
+    ...otherSessions.map((session) => session.cwd),
+    ...otherPinnedSessions.map((session) => session.cwd),
+  ])
+  const sortedPaths = [...paths]
+    .filter((path) => path.length > 0)
+    .sort((left, right) => left < right ? -1 : left > right ? 1 : 0)
+  return sortedPaths.map((path) => ({
+    path,
+    displayName: workspaceDisplayName(path, sortedPaths),
+    sessions: otherSessions.filter((session) => session.cwd === path),
+    pinnedSessions: otherPinnedSessions.filter((session) => session.cwd === path),
+  }))
+}
+
+/** Returns a bounded activity preview while keeping the complete list available to the UI. */
+export function workspaceActivityPreview<T>(
+  items: readonly T[],
+  expanded: boolean,
+  limit = workspaceActivityPreviewLimit,
+): { visible: T[]; hasMore: boolean } {
+  return {
+    visible: expanded ? [...items] : items.slice(0, limit),
+    hasMore: items.length > limit,
+  }
+}
 
 export interface SidebarSessionNode {
   session: RecentSession

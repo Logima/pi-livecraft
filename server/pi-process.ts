@@ -1,4 +1,9 @@
-import { execFile, spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import {
+  execFile,
+  spawn,
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
@@ -74,6 +79,8 @@ export class PiProcess extends EventEmitter {
         fileURLToPath(new URL('../pi-extensions/ask-user-question.ts', import.meta.url)),
         '--extension',
         fileURLToPath(new URL('../pi-extensions/quotas.ts', import.meta.url)),
+        '--extension',
+        fileURLToPath(new URL('../pi-extensions/subagents.ts', import.meta.url)),
         ...(sessionPath ? ['--session', sessionPath] : ['--session-id', sessionId]),
       ]
 

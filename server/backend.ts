@@ -37,6 +37,7 @@ import type {
   JsonObject,
   ManagerEvent,
   SessionSnapshot,
+  SubagentSessionRelation,
 } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
 
@@ -389,6 +390,9 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 
   if (method === 'POST' && url.pathname === '/api/sessions') {
     const body = await readJsonBody(request)
+    const relation = parseSubagentRelation(body.relation)
+    if (body.relation !== undefined && !relation)
+      throw new HttpError(400, 'Invalid subagent session relation')
     const cwd = await resolveWorkingDirectory(typeof body.cwd === 'string' ? body.cwd : '~/.pi')
     if (typeof body.sessionPath === 'string') {
       const session = await loadPiSession(body.sessionPath)
@@ -402,10 +406,12 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
           cwd,
           name: session.name,
           sessionPath: session.sessionPath,
+          ...(relation ? { relation } : {}),
         }),
       )
       return
     }
+    if (relation) throw new HttpError(400, 'Subagent relation requires an existing session')
     const session = await manager.request({ action: 'create', cwd })
     sendJson(response, 201, session)
     return
@@ -650,6 +656,35 @@ function isModelBody(value: unknown): { provider: string; modelId: string } | un
   if (!isObject(value) || typeof value.provider !== 'string' || typeof value.modelId !== 'string')
     return undefined
   return { provider: value.provider, modelId: value.modelId }
+}
+
+/** Validates browser-supplied relation metadata without accepting filesystem paths. */
+function parseSubagentRelation(value: unknown): SubagentSessionRelation | undefined {
+  if (
+    !isObject(value) || !hasOnlyKeys(value, [
+      'parentManagerSessionId',
+      'agentId',
+      'childSessionId',
+    ])
+  ) return undefined
+  const parentManagerSessionId = boundedIdentifier(value.parentManagerSessionId)
+  const agentId = boundedIdentifier(value.agentId)
+  const childSessionId = boundedIdentifier(value.childSessionId)
+  return parentManagerSessionId && agentId && childSessionId
+    ? { parentManagerSessionId, agentId, childSessionId }
+    : undefined
+}
+
+function boundedIdentifier(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200
+      && !/[\u0000-\u001f]/.test(value)
+    ? value
+    : undefined
+}
+
+function hasOnlyKeys(value: JsonObject, keys: readonly string[]): boolean {
+  const allowed = new Set(keys)
+  return Object.keys(value).every((key) => allowed.has(key))
 }
 
 function errorMessage(error: unknown): string {

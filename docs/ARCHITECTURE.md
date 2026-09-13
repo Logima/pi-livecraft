@@ -42,14 +42,14 @@ Use the [`src/features/` map](/src/features/README.md) to locate frontend owners
 
 ## Shared contracts
 
-`shared/` contains types and protocols exchanged between layers. HTTP, SSE, manager, and RPC formats are observable contracts: an internal move must not change them implicitly.
+`shared/` contains types and protocols exchanged between layers. HTTP, SSE, manager, and RPC formats are observable contracts: an internal move must not change them implicitly. The `pi-livecraft.subagents` status contract carries only bounded browser-safe agent data, including optional `toolCallId` correlation from the companion registry; it never carries session paths or arbitrary registry records. Subagent monitor opens carry only browser-safe parent/agent/child relation IDs; `shared/subagent-relay.ts` bounds and validates the child event envelope relayed by the manager.
 
 ## Main flows
 
 1. The frontend calls a function from `src/api.ts`.
 2. `server/backend.ts` validates the request and handles local capabilities directly, or forwards it to the manager.
 3. The manager creates, reopens, or commands the relevant Pi process.
-4. Pi events travel back to the backend and then to the browser through SSE.
+4. Pi events travel back to the backend and then to the browser through SSE. The manager may route a bounded child event from the parent companion into the related child session's normal event stream.
 5. `App` updates cross-cutting state and delegates rendering to the relevant feature.
 
 ## Where to make a change

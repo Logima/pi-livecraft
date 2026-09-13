@@ -4,6 +4,7 @@ These extensions are loaded into every persistent Pi session started by Pi Livec
 
 - `ask-user-question.ts` registers the structured questionnaire tool and bridges its versioned payload through Pi's extension UI protocol.
 - `quotas.ts` registers the private `/livecraft-quotas` command and publishes normalized provider usage through a versioned status payload.
+- `subagents.ts` publishes validated pi-subagents lifecycle snapshots through the reserved `pi-livecraft.subagents` status key; it never writes session messages or exposes filesystem paths.
 
 `server/pi-process.ts` owns the extension paths. These modules use Pi's public extension API and shared protocols only; they do not define Pi Livecraft HTTP routes.
 

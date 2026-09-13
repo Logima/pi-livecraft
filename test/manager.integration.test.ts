@@ -72,6 +72,253 @@ test(
   },
 )
 
+test(
+  'replays cached subagent bridge status in session summaries',
+  { timeout: 10_000 },
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'pi-manager-'))
+    const port = 45_000 + (process.pid % 10_000)
+    await writeFakePi(directory)
+    const manager = spawn(process.execPath, ['server/manager.ts'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PATH: `${fakePiBin(directory)}${delimiter}${process.env.PATH}`,
+        PI_LIVECRAFT_MANAGER_PORT: String(port),
+      },
+      stdio: 'ignore',
+    })
+    const client = await connectManager(port)
+    try {
+      const opened = await client.request('open', {
+        cwd: process.cwd(),
+        name: 'Bridge cache',
+        sessionPath: join(directory, 'bridge-cache.jsonl'),
+      })
+      const id = sessionId(opened)
+      const statusText = JSON.stringify({ schemaVersion: 1, agents: [] })
+      assert.equal(
+        (await client.request('command', {
+          sessionId: id,
+          command: { type: 'set_subagent_status_test', statusText },
+        }))
+          .ok,
+        true,
+      )
+      assert.equal(
+        sessionSubagentBridgeStatus(await client.request('list', {}), id),
+        statusText,
+      )
+      assert.equal(
+        (await client.request('command', {
+          sessionId: id,
+          command: { type: 'set_subagent_status_test', statusText: 42 },
+        }))
+          .ok,
+        true,
+      )
+      assert.equal(
+        sessionSubagentBridgeStatus(await client.request('list', {}), id),
+        statusText,
+      )
+    } finally {
+      client.close()
+      if (manager.exitCode === null) await stopProcess(manager)
+      await rm(directory, { force: true, recursive: true })
+    }
+  },
+)
+
+test(
+  'relays opened subagent turns and settles them from bridge status',
+  { timeout: 10_000 },
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'pi-manager-'))
+    const port = 45_000 + (process.pid % 10_000)
+    await writeFakePi(directory)
+    const manager = spawn(process.execPath, ['server/manager.ts'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PATH: `${fakePiBin(directory)}${delimiter}${process.env.PATH}`,
+        PI_LIVECRAFT_MANAGER_PORT: String(port),
+      },
+      stdio: 'ignore',
+    })
+    const client = await connectManager(port)
+    try {
+      const parent = sessionId(
+        await client.request('open', {
+          cwd: process.cwd(),
+          name: 'Parent',
+          sessionPath: join(directory, 'parent.jsonl'),
+        }),
+      )
+      const bridge = (status: 'running' | 'completed'): string =>
+        JSON.stringify({
+          schemaVersion: 1,
+          agents: [{
+            agentId: 'agent-1',
+            toolCallId: 'call-agent-1',
+            childSessionId: 'child-1',
+            type: 'general-purpose',
+            description: 'Inspect the API',
+            status,
+            startedAt: 1_700_000_000_000,
+            toolUses: 0,
+            turnCount: 0,
+            tokens: { input: 0, output: 0, cacheWrite: 0 },
+          }],
+        })
+      assert.equal(
+        (await client.request('command', {
+          sessionId: parent,
+          command: { type: 'set_subagent_status_test', statusText: bridge('running') },
+        }))
+          .ok,
+        true,
+      )
+      const cachedBridgeStatus = sessionSubagentBridgeStatus(
+        await client.request('list', {}),
+        parent,
+      )
+      if (typeof cachedBridgeStatus !== 'string') throw new Error('Bridge status was not cached')
+      assert.match(cachedBridgeStatus, /"toolCallId":"call-agent-1"/)
+      const wrongChild = await client.request('open', {
+        cwd: process.cwd(),
+        name: 'Wrong child',
+        sessionPath: join(directory, 'wrong-child.jsonl'),
+        relation: {
+          parentManagerSessionId: parent,
+          agentId: 'agent-1',
+          childSessionId: 'wrong-child',
+        },
+      })
+      assert.equal(wrongChild.ok, false)
+      assert.match(wrongChild.error ?? '', /Subagent is no longer running/)
+      const malformedRelation = await client.request('open', {
+        cwd: process.cwd(),
+        name: 'Malformed relation',
+        sessionPath: join(directory, 'malformed-relation.jsonl'),
+        relation: {
+          parentManagerSessionId: parent,
+          agentId: 'agent-1',
+          childSessionId: 'child-1',
+          path: '/must-not-be-accepted',
+        },
+      })
+      assert.equal(malformedRelation.ok, false)
+      assert.match(malformedRelation.error ?? '', /Invalid subagent session relation/)
+
+      const relay = (sequence: number, event: Record<string, unknown>): string =>
+        JSON.stringify({
+          schemaVersion: 1,
+          agentId: 'agent-1',
+          childSessionId: 'child-1',
+          sequence,
+          event,
+        })
+      await client.request('command', {
+        sessionId: parent,
+        command: {
+          type: 'set_subagent_event_test',
+          statusText: '{"schemaVersion":1,"agentId":"agent-1"}',
+        },
+      })
+      await client.request('command', {
+        sessionId: parent,
+        command: {
+          type: 'set_subagent_event_test',
+          statusText: relay(1, { type: 'agent_start' }),
+        },
+      })
+      await client.request('command', {
+        sessionId: parent,
+        command: {
+          type: 'set_subagent_event_test',
+          statusText: relay(2, { type: 'message_update', delta: 'buffered' }),
+        },
+      })
+
+      const child = sessionId(
+        await client.request('open', {
+          cwd: process.cwd(),
+          name: 'Child',
+          sessionPath: join(directory, 'child.jsonl'),
+          relation: {
+            parentManagerSessionId: parent,
+            agentId: 'agent-1',
+            childSessionId: 'child-1',
+          },
+        }),
+      )
+      const replayed = await client.waitForEvent((event) =>
+        event.event === 'pi'
+        && event.sessionId === child
+        && isObject(event.data)
+        && event.data.type === 'message_update'
+        && event.data.delta === 'buffered'
+      )
+      assert.equal(isObject(replayed.data) && replayed.data.type, 'message_update')
+      assert.equal(sessionStatus(await client.request('list', {}), child), 'running')
+
+      for (
+        const type of [
+          'get_state',
+          'get_entries',
+          'get_available_models',
+          'get_commands',
+          'get_session_stats',
+          'get_fork_messages',
+        ]
+      ) {
+        assert.equal(
+          (await client.request('command', { sessionId: child, command: { type } })).ok,
+          true,
+          `live relay child snapshot command ${type} should succeed`,
+        )
+      }
+
+      await client.request('command', {
+        sessionId: parent,
+        command: {
+          type: 'set_subagent_event_test',
+          statusText: relay(3, { type: 'message_update', delta: 'live' }),
+        },
+      })
+      await client.waitForEvent((event) =>
+        event.event === 'pi'
+        && event.sessionId === child
+        && isObject(event.data)
+        && event.data.type === 'message_update'
+        && event.data.delta === 'live'
+      )
+      const rejected = await client.request('command', {
+        sessionId: child,
+        command: { type: 'prompt', message: 'must be rejected' },
+      })
+      assert.equal(rejected.ok, false)
+      assert.match(rejected.error ?? '', /relay child is read-only/)
+
+      await client.request('command', {
+        sessionId: parent,
+        command: { type: 'set_subagent_status_test', statusText: bridge('completed') },
+      })
+      await client.waitForEvent((event) =>
+        event.event === 'pi'
+        && event.sessionId === child
+        && isObject(event.data)
+        && event.data.type === 'agent_settled'
+      )
+      assert.equal(sessionStatus(await client.request('list', {}), child), 'idle')
+    } finally {
+      client.close()
+      await stopProcess(manager)
+      await rm(directory, { force: true, recursive: true })
+    }
+  },
+)
+
 test('reconciles live Pi work before restarting the manager', { timeout: 10_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pi-manager-'))
   const port = 45_000 + (process.pid % 10_000)
@@ -164,6 +411,31 @@ test('reconciles live Pi work before restarting the manager', { timeout: 10_000 
     )
     const settledSessions = await client.request('list', {})
     assert.equal(sessionStatus(settledSessions, sessionId(opened)), 'idle')
+    assert.equal(
+      (await client.request('command', {
+        sessionId: sessionId(opened),
+        command: { type: 'set_agent_status_test', statusText: 'Agent: worker' },
+      }))
+        .ok,
+      true,
+    )
+    const activeAgentSessions = await client.request('list', {})
+    assert.equal(sessionActiveAgent(activeAgentSessions, sessionId(opened)), 'worker')
+    const activeAgentRestart = await client.request('restart', {})
+    assert.equal(activeAgentRestart.ok, false)
+    assert.match(activeAgentRestart.error ?? '', /Active Pi work/)
+
+    assert.equal(
+      (await client.request('command', {
+        sessionId: sessionId(opened),
+        command: { type: 'set_agent_status_test', statusText: 'idle' },
+      }))
+        .ok,
+      true,
+    )
+    const clearedAgentSessions = await client.request('list', {})
+    assert.equal(sessionActiveAgent(clearedAgentSessions, sessionId(opened)), undefined)
+    assert.equal(sessionStatus(clearedAgentSessions, sessionId(opened)), 'idle')
     const settledRestart = await client.request('restart', {})
     assert.equal(settledRestart.ok, true)
     await once(manager, 'exit')
@@ -351,6 +623,118 @@ test(
       assert.notEqual(fifthPid, secondPid)
       assert.notEqual(fifthPid, thirdPid)
       assert.notEqual(fifthPid, fourthPid)
+    } finally {
+      client.close()
+      await stopProcess(manager)
+      await rm(directory, { force: true, recursive: true })
+    }
+  },
+)
+
+test(
+  'does not reuse a Pi process with an active detached agent',
+  { timeout: 10_000 },
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'pi-manager-'))
+    const port = 45_000 + (process.pid % 10_000)
+    await writeFakePi(directory)
+    const manager = spawn(process.execPath, ['server/manager.ts'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PATH: `${fakePiBin(directory)}${delimiter}${process.env.PATH}`,
+        PI_LIVECRAFT_MANAGER_PORT: String(port),
+        PI_LIVECRAFT_IDLE_REUSE_AFTER_MS: '0',
+      },
+      stdio: 'ignore',
+    })
+    const client = await connectManager(port)
+    try {
+      const firstPath = join(directory, 'first.jsonl')
+      const first = await client.request('open', {
+        cwd: process.cwd(),
+        name: 'First',
+        sessionPath: firstPath,
+      })
+      const firstId = sessionId(first)
+      const firstPid = processId(
+        await client.request('command', {
+          sessionId: firstId,
+          command: { type: 'process_id_test' },
+        }),
+      )
+      assert.equal(
+        (await client.request('command', {
+          sessionId: firstId,
+          command: { type: 'set_agent_status_test', statusText: 'Agent: worker' },
+        }))
+          .ok,
+        true,
+      )
+
+      const second = await client.request('create', { cwd: process.cwd() })
+      const secondId = sessionId(second)
+      const secondPid = processId(
+        await client.request('command', {
+          sessionId: secondId,
+          command: { type: 'process_id_test' },
+        }),
+      )
+      const third = await client.request('create', { cwd: process.cwd() })
+      const thirdId = sessionId(third)
+      const thirdPid = processId(
+        await client.request('command', {
+          sessionId: thirdId,
+          command: { type: 'process_id_test' },
+        }),
+      )
+      const fourth = await client.request('open', {
+        cwd: process.cwd(),
+        name: 'Fourth',
+        sessionPath: join(directory, 'fourth.jsonl'),
+      })
+      const fourthId = sessionId(fourth)
+      const fourthPid = processId(
+        await client.request('command', {
+          sessionId: fourthId,
+          command: { type: 'process_id_test' },
+        }),
+      )
+      const activeSessions = await client.request('list', {})
+      assert.equal(sessionActiveAgent(activeSessions, firstId), 'worker')
+      assert.equal(sessionStatus(activeSessions, firstId), 'running')
+      assert.equal(sessionPath(activeSessions, firstId), firstPath)
+      assert.equal(fourthPid, secondPid)
+      assert.notEqual(fourthPid, firstPid)
+      assert.notEqual(fourthPid, thirdPid)
+
+      assert.equal(
+        (await client.request('command', {
+          sessionId: firstId,
+          command: { type: 'set_agent_status_test', statusText: 'idle' },
+        }))
+          .ok,
+        true,
+      )
+      const clearedSessions = await client.request('list', {})
+      assert.equal(sessionActiveAgent(clearedSessions, firstId), undefined)
+      assert.equal(sessionStatus(clearedSessions, firstId), 'idle')
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const fifth = await client.request('open', {
+        cwd: process.cwd(),
+        name: 'Fifth',
+        sessionPath: join(directory, 'fifth.jsonl'),
+      })
+      const fifthId = sessionId(fifth)
+      const fifthPid = processId(
+        await client.request('command', {
+          sessionId: fifthId,
+          command: { type: 'process_id_test' },
+        }),
+      )
+      assert.equal(fifthPid, firstPid)
+      assert.equal(sessionStatus(await client.request('list', {}), firstId), undefined)
     } finally {
       client.close()
       await stopProcess(manager)
@@ -706,6 +1090,7 @@ const expectedExtensions = ${
     JSON.stringify([
       join(process.cwd(), 'pi-extensions/ask-user-question.ts'),
       join(process.cwd(), 'pi-extensions/quotas.ts'),
+      join(process.cwd(), 'pi-extensions/subagents.ts'),
     ])
   }
 const extensionPaths = process.argv.flatMap((argument, index) =>
@@ -759,6 +1144,26 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: { cancelled: false } }))
     return
   }
+  if (!isolated && command.type === 'get_entries') {
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: { entries: [], leafId: null } }))
+    return
+  }
+  if (!isolated && command.type === 'get_available_models') {
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: { models: [] } }))
+    return
+  }
+  if (!isolated && command.type === 'get_commands') {
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: { commands: [] } }))
+    return
+  }
+  if (!isolated && command.type === 'get_session_stats') {
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: { cost: 0 } }))
+    return
+  }
+  if (!isolated && command.type === 'get_fork_messages') {
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: { messages: [] } }))
+    return
+  }
   if (!isolated && command.type === 'fork') {
     if (command.entryId !== 'user-1') throw new Error('Unexpected fork entry ID')
     createdSessionCount += 1
@@ -768,6 +1173,22 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (!isolated && command.type === 'set_session_name') {
     if (command.name !== 'Renamed session') throw new Error('Unexpected session name')
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: {} }))
+    return
+  }
+  if (!isolated && command.type === 'set_agent_status_test') {
+    console.log(JSON.stringify({ type: 'extension_ui_request', method: 'setStatus', statusKey: 'agent', statusText: command.statusText }))
+    console.log(JSON.stringify({ type: 'agent_settled' }))
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: {} }))
+    return
+  }
+  if (!isolated && command.type === 'set_subagent_status_test') {
+    console.log(JSON.stringify({ type: 'extension_ui_request', method: 'setStatus', statusKey: 'pi-livecraft.subagents', statusText: command.statusText }))
+    console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: {} }))
+    return
+  }
+  if (!isolated && command.type === 'set_subagent_event_test') {
+    console.log(JSON.stringify({ type: 'extension_ui_request', method: 'setStatus', statusKey: 'pi-livecraft.subagent-event', statusText: command.statusText }))
     console.log(JSON.stringify({ type: 'response', id: command.id, success: true, data: {} }))
     return
   }
@@ -959,6 +1380,18 @@ function sessionStatus(response: ManagerResponse, id: string): unknown {
   if (!Array.isArray(response.data)) throw new Error('Invalid sessions response')
   const session = response.data.find((value) => isObject(value) && value.id === id)
   return isObject(session) ? session.status : undefined
+}
+
+function sessionActiveAgent(response: ManagerResponse, id: string): unknown {
+  if (!Array.isArray(response.data)) throw new Error('Invalid sessions response')
+  const session = response.data.find((value) => isObject(value) && value.id === id)
+  return isObject(session) ? session.activeAgent : undefined
+}
+
+function sessionSubagentBridgeStatus(response: ManagerResponse, id: string): unknown {
+  if (!Array.isArray(response.data)) throw new Error('Invalid sessions response')
+  const session = response.data.find((value) => isObject(value) && value.id === id)
+  return isObject(session) ? session.subagentBridgeStatus : undefined
 }
 
 function sessionPath(response: ManagerResponse, id: string): unknown {

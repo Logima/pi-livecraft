@@ -49,6 +49,24 @@ test('retains only the events needed to restore active thinking and tools', () =
   assert.deepEqual(live.snapshot(), [])
 })
 
+test('replays an in-progress relayed child turn in event order', () => {
+  const live = new LiveSessionEvents()
+  live.receive({ type: 'agent_start' }, 101)
+  live.receive({ type: 'message_start', message: { role: 'assistant', content: [] } }, 102)
+  live.receive({
+    type: 'message_update',
+    assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Buffered' },
+  }, 103)
+  live.receive({ type: 'agent_end' }, 104)
+
+  assert.deepEqual(live.snapshot().map(({ sequence }) => sequence), [101, 102, 103])
+  assert.equal(live.snapshot().at(-1)?.data.type, 'message_update')
+  assert.deepEqual(live.snapshot().at(-1)?.data.message, {
+    role: 'assistant',
+    content: [{ type: 'text', text: 'Buffered' }],
+  })
+})
+
 test('retains the latest steering queue for snapshot replay', () => {
   const live = new LiveSessionEvents()
   live.receive({ type: 'queue_update', steering: ['First'] }, 1)

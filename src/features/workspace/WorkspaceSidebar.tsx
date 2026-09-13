@@ -13,10 +13,10 @@ import type { RecentSession, SessionSummary } from '../../../shared/types.ts'
 import { sessionIndicator } from './session-indicator.ts'
 import { SessionStatusIndicator } from './SessionStatusIndicator.tsx'
 import {
-  otherWorkspacePinnedSessions,
-  otherWorkspaceSessions,
   relatedParentSessionPaths,
   sidebarSessionTree,
+  workspaceActivityPreview,
+  workspaceSidebarEntries,
   workspaceSessionCounts,
   type PinnedSession,
   type SessionActionTarget,
@@ -30,6 +30,10 @@ interface ContextMenuState {
   x: number
   y: number
 }
+
+type WorkspaceActivityItem =
+  | { kind: 'managed'; session: SessionSummary; pinned: boolean }
+  | { kind: 'pinned'; session: PinnedSession }
 
 interface WorkspaceSidebarProps {
   collapsed: boolean
@@ -91,6 +95,9 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const [openingSessionPath, setOpeningSessionPath] = useState('')
   const [expandedSessionPaths, setExpandedSessionPaths] = useState<ReadonlySet<string>>(new Set())
+  const [expandedWorkspacePaths, setExpandedWorkspacePaths] = useState<ReadonlySet<string>>(
+    new Set(),
+  )
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState({ left: 0, top: 0 })
   const [renameTarget, setRenameTarget] = useState<SessionActionTarget | null>(null)
@@ -120,30 +127,28 @@ export function WorkspaceSidebar({
       ),
     [activeSessionPaths, recentSessions, sentSessions, workspacePath],
   )
-  const otherSessions = useMemo(
+  const workspaceEntries = useMemo(
     () =>
-      otherWorkspaceSessions(
-        sessions,
+      workspaceSidebarEntries(
         workspacePath,
+        recentWorkspacePaths,
+        sessions,
         compactingSessionIds,
         completedSessionIds,
-        pinnedSessionPaths,
+        pinnedSessions,
       ),
-    [compactingSessionIds, completedSessionIds, pinnedSessionPaths, sessions, workspacePath],
+    [
+      compactingSessionIds,
+      completedSessionIds,
+      pinnedSessions,
+      recentWorkspacePaths,
+      sessions,
+      workspacePath,
+    ],
   )
-  const otherPinnedSessions = useMemo(
-    () => otherWorkspacePinnedSessions(pinnedSessions, sessions, workspacePath),
-    [pinnedSessions, sessions, workspacePath],
-  )
-  const workspaceCounts = useMemo(
-    () => new Map(
-      recentWorkspacePaths.map((path) => [
-        path,
-        workspaceSessionCounts(sessions, path, completedSessionIds),
-      ]),
-    ),
-    [completedSessionIds, recentWorkspacePaths, sessions],
-  )
+  const currentWorkspaceName = workspaceEntries
+    .find((entry) => entry.path === workspacePath)
+    ?.displayName ?? workspacePath
 
   useEffect(() => {
     selectedSessionRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -407,6 +412,55 @@ export function WorkspaceSidebar({
     )
   }
 
+  /** Renders one bounded background-session preview with the same session actions as the main list. */
+  function renderWorkspaceActivityItem(item: WorkspaceActivityItem) {
+    const session = item.session
+    const isManaged = item.kind === 'managed'
+    const indicator = item.kind === 'managed'
+      ? sessionIndicator(item.session, selectedId, compactingSessionIds, completedSessionIds)
+      : null
+    const isPinned = item.kind === 'pinned' || item.pinned
+    const actionTarget: SessionActionTarget = {
+      cwd: session.cwd,
+      name: session.name,
+      sessionId: item.kind === 'managed' ? item.session.id : undefined,
+      sessionPath: session.sessionPath,
+    }
+    const label = `${session.name} in workspace ${session.cwd}${isPinned ? ', pinned' : ''}`
+    return (
+      <Tooltip
+        hint={`Right-click to ${
+          isPinned ? 'unpin, rename, or close' : 'pin, rename, or close'
+        } the session`}
+        key={item.kind === 'managed' ? item.session.id : item.session.sessionPath}
+        label={`${session.name}\n${session.cwd}`}
+      >
+        <button
+          aria-haspopup='menu'
+          aria-label={label}
+          className={`session-item workspace-activity-session${indicator ? ` ${indicator}` : ''}${
+            isPinned ? ' pinned' : ''
+          }`}
+          disabled={!isManaged && openingSessionPath === session.sessionPath}
+          onContextMenu={(event) => openContextMenu(actionTarget, event)}
+          onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
+          onClick={() => {
+            if (item.kind === 'managed') onSelectOtherWorkspaceSession(item.session)
+            else openPinnedSession(item.session)
+          }}
+          type='button'
+        >
+          {indicator && <SessionStatusIndicator status={indicator} />}
+          {isPinned && <PinIcon />}
+          <span>
+            <strong>{session.name}</strong>
+            <small>{session.cwd}</small>
+          </span>
+        </button>
+      </Tooltip>
+    )
+  }
+
   const contextMenuSessionPath = contextMenu?.target.sessionPath
   const contextMenuIsPinned = contextMenuSessionPath !== undefined
     && pinnedSessionPaths.has(contextMenuSessionPath)
@@ -469,160 +523,152 @@ export function WorkspaceSidebar({
           </button>
         </Tooltip>
       </div>
-      <div className='workspace-group'>
-        <Tooltip label={workspacePath}>
-          <button
-            aria-label={`Choose workspace: ${workspacePath}`}
-            className='workspace-path'
-            onClick={onChooseWorkspace}
-            type='button'
-          >
-            <WorkspaceIcon />
-            <div className='workspace-path-copy'>
-              <span>Current directory</span>
-              <strong>{workspacePath}</strong>
-            </div>
-            <ChevronIcon />
-          </button>
-        </Tooltip>
-      </div>
-      {recentWorkspacePaths.filter((path) => path !== workspacePath).length > 0 && (
-        <section aria-label='Recent workspaces' className='recent-workspaces-sidebar'>
-          <h2>Recent workspaces</h2>
-          <nav aria-label='Recent workspaces' className='recent-workspaces-sidebar-list'>
-            {recentWorkspacePaths
-              .filter((path) => path !== workspacePath)
-              .map((path) => (
-                <button
-                  aria-label={`Open workspace ${path}`}
-                  className='workspace-item'
-                  key={path}
-                  onClick={() => onSelectWorkspace(path)}
-                  title={path}
-                  type='button'
-                >
-                  <WorkspaceIcon />
-                  <span className='workspace-item-path'>{path}</span>
-                  <span className='workspace-status-counts' aria-label='Session status counts'>
-                    {(workspaceCounts.get(path)?.running ?? 0) > 0 && (
-                      <span className='workspace-status-count'>
-                        <SessionStatusIndicator
-                          label='Running sessions'
-                          status='working'
-                        />
-                        {workspaceCounts.get(path)?.running}
-                      </span>
-                    )}
-                    {(workspaceCounts.get(path)?.unread ?? 0) > 0 && (
-                      <span className='workspace-status-count'>
-                        <SessionStatusIndicator
-                          label='Finished unread sessions'
-                          status='complete'
-                        />
-                        {workspaceCounts.get(path)?.unread}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              ))}
-          </nav>
-        </section>
-      )}
-      <NewSessionButton onCreate={onCreate} onError={onError} />
-      <nav className='session-list' aria-label='Recent Pi sessions'>
-        {isRefreshing && sessionTree.length === 0 && (
-          <p className='session-list-loading' role='status'>Loading sessions…</p>
-        )}
-        {sessionTree.map(renderSessionNode)}
-        {sessionTree.length === 0 && !isRefreshing && (
-          <p className='empty-sidebar'>No Pi sessions in this directory.</p>
-        )}
-      </nav>
-      {(otherSessions.length > 0 || otherPinnedSessions.length > 0) && (
-        <section className='other-workspace-sessions'>
-          <h2>Other workspaces</h2>
-          <nav
-            aria-label='Pinned, active and completed sessions in other workspaces'
-            className='other-session-list'
-          >
-            {otherSessions.map((session) => {
-              const indicator = sessionIndicator(
+      <section
+        aria-labelledby='workspace-switcher-title'
+        className='workspace-switcher'
+      >
+        <div className='workspace-section-header'>
+          <h2 id='workspace-switcher-title'>Workspaces</h2>
+          <Tooltip label='Choose a workspace directory'>
+            <button
+              aria-label='Choose a workspace directory'
+              className='workspace-choose'
+              onClick={onChooseWorkspace}
+              type='button'
+            >
+              <WorkspaceIcon />
+              <span>Choose</span>
+            </button>
+          </Tooltip>
+        </div>
+        <nav aria-label='Workspaces' className='workspace-list'>
+          {workspaceEntries.map((entry, index) => {
+            const isActive = entry.path === workspacePath
+            const activityItems: WorkspaceActivityItem[] = [
+              ...entry.sessions.map((session) => ({
+                kind: 'managed' as const,
+                pinned: session.sessionPath !== undefined
+                  && pinnedSessionPaths.has(session.sessionPath),
                 session,
-                selectedId,
-                compactingSessionIds,
-                completedSessionIds,
-              )
-              const isPinned = session.sessionPath !== undefined
-                && pinnedSessionPaths.has(session.sessionPath)
-              const actionTarget: SessionActionTarget = {
-                cwd: session.cwd,
-                name: session.name,
-                sessionId: session.id,
-                sessionPath: session.sessionPath,
-              }
-              return (
-                <Tooltip
-                  hint='Right-click to pin, rename, or close the session'
-                  key={session.id}
-                  label={`${session.name}\n${session.cwd}`}
-                >
-                  <button
-                    aria-haspopup='menu'
-                    aria-label={`${session.name} in workspace ${session.cwd}${
-                      isPinned ? ', pinned' : ''
-                    }`}
-                    className={`session-item${indicator ? ` ${indicator}` : ''}${
-                      isPinned ? ' pinned' : ''
-                    }`}
-                    onContextMenu={(event) => openContextMenu(actionTarget, event)}
-                    onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
-                    onClick={() => onSelectOtherWorkspaceSession(session)}
-                    type='button'
-                  >
-                    {indicator && <SessionStatusIndicator status={indicator} />}
-                    {isPinned && <PinIcon />}
-                    <span>
-                      <strong>{session.name}</strong>
-                      <small>{session.cwd}</small>
-                    </span>
-                  </button>
-                </Tooltip>
-              )
-            })}
-            {otherPinnedSessions.map((session) => {
-              const actionTarget: SessionActionTarget = {
-                cwd: session.cwd,
-                name: session.name,
-                sessionPath: session.sessionPath,
-              }
-              return (
-                <Tooltip
-                  hint='Right-click to unpin, rename, or close the session'
-                  key={session.sessionPath}
-                  label={`${session.name}\n${session.cwd}`}
-                >
-                  <button
-                    aria-haspopup='menu'
-                    aria-label={`${session.name} in workspace ${session.cwd}, pinned`}
-                    className='session-item pinned'
-                    disabled={openingSessionPath === session.sessionPath}
-                    onContextMenu={(event) => openContextMenu(actionTarget, event)}
-                    onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
-                    onClick={() => openPinnedSession(session)}
-                    type='button'
-                  >
-                    <PinIcon />
-                    <span>
-                      <strong>{session.name}</strong>
-                      <small>{session.cwd}</small>
-                    </span>
-                  </button>
-                </Tooltip>
-              )
-            })}
-          </nav>
-        </section>
-      )}
+              })),
+              ...entry
+                .pinnedSessions
+                .filter((session) =>
+                  !entry.sessions.some(
+                    (managed) => managed.sessionPath === session.sessionPath,
+                  )
+                )
+                .map((session) => ({ kind: 'pinned' as const, session })),
+            ]
+            const isExpanded = expandedWorkspacePaths.has(entry.path)
+            const activityPreview = workspaceActivityPreview(activityItems, isExpanded)
+            const counts = workspaceSessionCounts(sessions, entry.path, completedSessionIds)
+            const activityId = `workspace-activity-${index}`
+            return (
+              <div
+                className={`workspace-entry${isActive ? ' active' : ''}`}
+                key={entry.path}
+              >
+                <div className='workspace-row'>
+                  <Tooltip label={entry.path} hint='Select workspace'>
+                    <button
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={`Open workspace ${entry.path}${isActive ? ', Active' : ''}`}
+                      className='workspace-item'
+                      onClick={() => onSelectWorkspace(entry.path)}
+                      title={entry.path}
+                      type='button'
+                    >
+                      <WorkspaceIcon />
+                      <span className='workspace-item-copy'>
+                        <span className='workspace-item-heading'>
+                          <strong>{entry.displayName}</strong>
+                          {isActive && <span className='workspace-active-label'>Active</span>}
+                        </span>
+                        <small title={entry.path}>{entry.path}</small>
+                      </span>
+                      <span
+                        aria-label='Session status counts'
+                        className='workspace-status-counts'
+                      >
+                        {counts.running > 0 && (
+                          <span className='workspace-status-count running'>
+                            <SessionStatusIndicator label='Running sessions' status='working' />
+                            {counts.running}
+                          </span>
+                        )}
+                        {counts.unread > 0 && (
+                          <span className='workspace-status-count unread'>
+                            <SessionStatusIndicator
+                              label='Finished unread sessions'
+                              status='complete'
+                            />
+                            {counts.unread}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  </Tooltip>
+                  {activityPreview.hasMore && (
+                    <button
+                      aria-controls={activityId}
+                      aria-expanded={isExpanded}
+                      aria-label={`${
+                        isExpanded ? 'Show less' : 'Show all'
+                      } activity for ${entry.displayName}`}
+                      className={`workspace-activity-toggle${isExpanded ? ' expanded' : ''}`}
+                      onClick={() =>
+                        setExpandedWorkspacePaths((current) => {
+                          const next = new Set(current)
+                          if (next.has(entry.path)) next.delete(entry.path)
+                          else next.add(entry.path)
+                          return next
+                        })}
+                      type='button'
+                    >
+                      <ChevronIcon />
+                      <span>{isExpanded ? 'Show less' : 'Show all'}</span>
+                    </button>
+                  )}
+                </div>
+                {activityItems.length > 0 && (
+                  <div className='workspace-activity' id={activityId}>
+                    <div
+                      aria-label={`Activity in workspace ${entry.path}`}
+                      className='workspace-activity-list'
+                    >
+                      {activityPreview.visible.map(renderWorkspaceActivityItem)}
+                    </div>
+                    {activityPreview.hasMore && !isExpanded && (
+                      <p className='workspace-activity-more'>
+                        {activityItems.length - activityPreview.visible.length}{' '}
+                        more session{activityItems.length - activityPreview.visible.length === 1
+                          ? ''
+                          : 's'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </nav>
+      </section>
+      <section aria-labelledby='current-sessions-title' className='session-section'>
+        <div className='session-section-header'>
+          <h2 id='current-sessions-title'>Sessions · {currentWorkspaceName}</h2>
+          <NewSessionButton compact onCreate={onCreate} onError={onError} />
+        </div>
+        <nav className='session-list' aria-label={`Recent Pi sessions in ${workspacePath}`}>
+          {isRefreshing && sessionTree.length === 0 && (
+            <p className='session-list-loading' role='status'>Loading sessions…</p>
+          )}
+          {sessionTree.map(renderSessionNode)}
+          {sessionTree.length === 0 && !isRefreshing && (
+            <p className='empty-sidebar'>No Pi sessions in this directory.</p>
+          )}
+        </nav>
+      </section>
       {contextMenu && (
         <div
           aria-label='Session actions'
@@ -670,7 +716,15 @@ export function WorkspaceSidebar({
 
 /** Prevents duplicate session creation and reports errors to the container. */
 function NewSessionButton(
-  { onCreate, onError }: { onCreate: () => Promise<void>; onError: (cause: unknown) => void },
+  {
+    compact = false,
+    onCreate,
+    onError,
+  }: {
+    compact?: boolean
+    onCreate: () => Promise<void>
+    onError: (cause: unknown) => void
+  },
 ) {
   const [busy, setBusy] = useState(false)
 
@@ -687,7 +741,9 @@ function NewSessionButton(
 
   return (
     <button
-      className='new-session'
+      aria-busy={busy}
+      aria-label={busy ? 'Starting a new session' : 'Start a new session'}
+      className={`new-session${compact ? ' compact' : ''}`}
       disabled={busy}
       onClick={() => void create()}
       type='button'

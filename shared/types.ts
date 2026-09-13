@@ -1,11 +1,20 @@
 export type JsonObject = Record<string, unknown>
 
+/** Identifies an opened transcript that observes a running pi-subagents child. */
+export interface SubagentSessionRelation {
+  parentManagerSessionId: string
+  agentId: string
+  childSessionId: string
+}
+
 export interface SessionSummary {
   id: string
   cwd: string
   name: string
   sessionPath?: string
   activeAgent?: string
+  subagentBridgeStatus?: string
+  subagentRelation?: SubagentSessionRelation
   status: 'starting' | 'idle' | 'running' | 'exited'
   pendingUi: JsonObject[]
 }
@@ -143,6 +152,7 @@ export interface ManagerRequest {
   tools?: string[]
   includeContextFiles?: boolean
   direction?: string
+  relation?: SubagentSessionRelation
 }
 
 export interface ManagerResponse {

@@ -12,6 +12,7 @@ import type {
   RecentSession,
   SessionSnapshot,
   SessionSummary,
+  SubagentSessionRelation,
   TodoItem,
   WorkspaceFile,
 } from '../shared/types.ts'
@@ -201,10 +202,14 @@ export async function createSession(cwd: string): Promise<SessionSummary> {
   })
 }
 
-export async function openSession(cwd: string, sessionPath: string): Promise<SessionSummary> {
+export async function openSession(
+  cwd: string,
+  sessionPath: string,
+  relation?: SubagentSessionRelation,
+): Promise<SessionSummary> {
   return request<SessionSummary>('/api/sessions', {
     method: 'POST',
-    body: JSON.stringify({ cwd, sessionPath }),
+    body: JSON.stringify({ cwd, sessionPath, ...(relation ? { relation } : {}) }),
   })
 }
 

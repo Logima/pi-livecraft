@@ -9,6 +9,10 @@ import {
   relatedParentSessionPaths,
   sidebarSessions,
   sidebarSessionTree,
+  workspaceActivityPreview,
+  workspaceBasename,
+  workspaceDisplayName,
+  workspaceSidebarEntries,
   workspaceSessionCounts,
 } from '../src/features/workspace/sidebar-sessions.ts'
 
@@ -199,6 +203,81 @@ test('shows active and unviewed completed sessions from other workspaces, active
     ),
     [starting, completed],
   )
+})
+
+test('projects each workspace once in deterministic order with background activity', () => {
+  const unread: SessionSummary = {
+    id: 'unread',
+    cwd: '/activity/unread',
+    name: 'Unread',
+    sessionPath: '/sessions/unread.jsonl',
+    status: 'idle',
+    pendingUi: [],
+  }
+  const running: SessionSummary = {
+    id: 'running',
+    cwd: '/activity/running',
+    name: 'Running',
+    sessionPath: '/sessions/running.jsonl',
+    status: 'running',
+    pendingUi: [],
+  }
+  const pinned = {
+    cwd: '/activity/pinned',
+    name: 'Pinned',
+    sessionPath: '/sessions/pinned.jsonl',
+  }
+  const activePinned = {
+    cwd: '/activity/running',
+    name: 'Pinned running',
+    sessionPath: '/sessions/running.jsonl',
+  }
+
+  const entries = workspaceSidebarEntries(
+    '/current/workspace',
+    ['/recent/workspace', '/activity/unread', '/recent/workspace'],
+    [unread, running],
+    new Set(),
+    new Set(['/sessions/unread.jsonl']),
+    [pinned, activePinned],
+  )
+
+  assert.deepEqual(entries.map((entry) => entry.path), [
+    '/activity/pinned',
+    '/activity/running',
+    '/activity/unread',
+    '/current/workspace',
+    '/recent/workspace',
+  ])
+  assert.equal(entries.filter((entry) => entry.path === '/recent/workspace').length, 1)
+  assert.deepEqual(entries.find((entry) => entry.path === '/activity/pinned')?.pinnedSessions, [
+    pinned,
+  ])
+  assert.deepEqual(entries.find((entry) => entry.path === '/activity/running')?.sessions, [running])
+  assert.deepEqual(entries.find((entry) => entry.path === '/activity/running')?.pinnedSessions, [])
+})
+
+test('formats workspace basenames and duplicate names across path conventions', () => {
+  assert.equal(workspaceBasename('/home/dev/project/'), 'project')
+  assert.equal(workspaceBasename('C:\\Users\\dev\\project\\'), 'project')
+  assert.equal(workspaceBasename('~/project'), 'project')
+  assert.equal(
+    workspaceDisplayName('/one/project', ['/one/project', '/two/project']),
+    'project · /one',
+  )
+  assert.equal(workspaceDisplayName('/one/unique', ['/one/unique']), 'unique')
+})
+
+test('bounds background activity previews without discarding the remainder', () => {
+  const items = ['running', 'unread', 'pinned', 'older']
+  assert.deepEqual(workspaceActivityPreview(items, false), {
+    visible: ['running', 'unread', 'pinned'],
+    hasMore: true,
+  })
+  assert.deepEqual(workspaceActivityPreview(items, true), {
+    visible: items,
+    hasMore: true,
+  })
 })
 
 test('hides current, idle viewed, and exited sessions from other workspaces', () => {

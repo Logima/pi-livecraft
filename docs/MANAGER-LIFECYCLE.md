@@ -14,7 +14,7 @@ Process ownership must not move into the backend: doing so would make backend re
 
 ## Pi process allocation
 
-When a session is created or reopened, the manager first keeps three live Pi processes for the same canonical working directory: the first three sessions always start their own process. Once that minimum is reached, it reassigns only an idle process that has remained unused for more than three minutes through Pi's public `new_session` or `switch_session` RPC command. A process is not reusable while it has running work, an in-flight RPC request, pending blocking UI, or recent activity; if no process qualifies, the manager starts another one. The pool may therefore grow beyond three processes during bursts, while the replaced session remains persisted in Pi history and can be reopened later.
+When a session is created or reopened, the manager first keeps three live Pi processes for the same canonical working directory: the first three sessions always start their own process. Once that minimum is reached, it reassigns only an idle process that has remained unused for more than three minutes through Pi's public `new_session` or `switch_session` RPC command. A process is not reusable while it has running work, an in-flight RPC request, pending blocking UI, an extension-reported active detached agent, a relay-backed child session, or recent activity; if no process qualifies, the manager starts another one. The pool may therefore grow beyond three processes during bursts, while the replaced session remains persisted in Pi history and can be reopened later.
 
 ## Runtime revision
 
@@ -41,7 +41,7 @@ The backend emits these states through the `manager_status` SSE event. `canResta
 
 1. The frontend calls `POST /api/manager/restart` through `src/api.ts`.
 2. The backend requires a connected, stale, supervised manager and rejects duplicate requests.
-3. The manager performs the authoritative check: no tracked request may remain, and each Pi process must report no streaming, compaction, queued message, or pending blocking UI.
+3. The manager performs the authoritative check: no tracked request may remain, and each Pi process must report no streaming, compaction, queued message, or pending blocking UI. An extension-reported active detached agent also blocks restart, even when Pi reports the parent session idle.
 4. After acknowledging the request, the manager closes its TCP server and terminates each Pi RPC process within a bounded grace period. POSIX receives `SIGTERM`, then direct `SIGKILL` if needed. Windows receives stdin EOF, then shell-free `taskkill.exe /pid <pid> /t /f` to terminate its process tree, with direct `SIGKILL` as the fallback. The manager awaits this cleanup before exiting with code `75`.
 5. Only that exit code lets the supervisor calculate a fresh revision and start the replacement.
 6. The monitor returns to `current` only after a different manager instance reconnects with the expected revision.

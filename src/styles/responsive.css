@@ -120,48 +120,19 @@
     min-width: 0;
     margin-bottom: 0;
   }
-  .workspace-group {
+  .workspace-switcher {
     grid-row: 2;
     grid-column: 1 / -1;
+    max-height: min(42dvh, 360px);
   }
-  .workspace-path {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .workspace-path span {
-    flex: 0 0 auto;
-  }
-  .workspace-path strong {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .new-session {
-    grid-row: 1;
-    grid-column: 2;
-    align-self: center;
-    width: auto;
-    margin-bottom: 0;
-    padding-inline: 13px;
-  }
-  .session-list {
+  .session-section {
     grid-row: 3;
     grid-column: 1 / -1;
+  }
+  .session-list {
     display: flex;
     flex-direction: row;
     overflow-x: auto;
-  }
-  .other-workspace-sessions {
-    grid-column: 1 / -1;
-    max-height: none;
-  }
-  .other-session-list {
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
   }
   .session-item {
     min-width: 220px;

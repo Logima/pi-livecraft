@@ -10,6 +10,7 @@
 @import "./features/conversation/conversation-actions.css";
 @import "./features/conversation/activity.css";
 @import "./features/conversation/conversation-motion.css";
+@import "./features/conversation/subagent-monitor.css";
 @import "./features/session-analysis/session-analysis.css";
 @import "./features/dialogs/dialogs.css";
 @import "./features/settings/settings.css";

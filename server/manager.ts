@@ -17,12 +17,14 @@ import {
 } from './prompt-improvement.ts'
 import { runIsolatedPrompt } from './run-isolated-prompt.ts'
 import { isObject } from '../shared/is-object.ts'
+import { parseSubagentRelayEnvelope } from '../shared/subagent-relay.ts'
 import type {
   JsonObject,
   ManagerEvent,
   ManagerRequest,
   ManagerResponse,
   SessionSummary,
+  SubagentSessionRelation,
 } from '../shared/types.ts'
 
 const host = '127.0.0.1'
@@ -32,6 +34,21 @@ const idleReuseAfterMs = readDuration('PI_LIVECRAFT_IDLE_REUSE_AFTER_MS', 3 * 60
 const clients = new Set<Socket>()
 const sessions = new Map<string, ManagedSession>()
 const openingSessions = new Map<string, Promise<SessionSummary>>()
+const maxRelayBufferEvents = 64
+const maxRelayBufferBytes = 96_000
+const maxRelayIdentifierLength = 200
+const maxBridgeStringLength = 240
+const maxBridgeAgents = 100
+const maxBridgeCounter = 1_000_000_000
+/** Commands needed to hydrate a snapshot without allowing a live relay child to mutate Pi. */
+const liveRelayChildReadOnlyCommands = new Set([
+  'get_state',
+  'get_entries',
+  'get_available_models',
+  'get_commands',
+  'get_session_stats',
+  'get_fork_messages',
+])
 const restartExitCode = readRestartExitCode()
 const supervised = process.env.PI_LIVECRAFT_MANAGER_SUPERVISED === '1'
   && restartExitCode !== undefined
@@ -54,6 +71,40 @@ interface ManagedSession {
   bufferedEvents: JsonObject[]
   idleSince: number | undefined
   activeToolCallId: string | undefined
+  bridgeSnapshot: BridgeSnapshot | undefined
+  relayStates: Map<string, RelayState>
+}
+
+interface BridgeAgent {
+  agentId: string
+  toolCallId?: string
+  childSessionId?: string
+  type: string
+  description: string
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  startedAt: number
+  completedAt?: number
+  model?: { provider: string; modelId: string }
+  thinking?: string
+  requestedModel?: string
+  requestedThinking?: string
+  toolUses: number
+  turnCount: number
+  latestActivity?: string
+  tokens: { input: number; output: number; cacheWrite: number }
+}
+
+interface BridgeSnapshot {
+  agents: readonly BridgeAgent[]
+  statusText: string
+}
+
+interface RelayState {
+  childSessionId: string
+  lastSequence: number
+  inProgress: boolean
+  bufferedEvents: JsonObject[]
+  bufferedBytes: number
 }
 
 const server = createServer((socket) => {
@@ -169,10 +220,15 @@ async function refreshSessionActivity(): Promise<boolean> {
     summary.status !== 'exited' && !switching
   )
   const activity = await Promise.all(managedSessions.map(async (session) => {
+    if (isLiveRelayChild(session)) {
+      markSessionRunning(session)
+      return true
+    }
     const running = piHasActiveWork(await requestPi(session, { type: 'get_state' }, 5_000))
-    if (running) markSessionRunning(session)
+    const hasActiveAgent = session.summary.activeAgent !== undefined
+    if (running || hasActiveAgent) markSessionRunning(session)
     else markSessionIdle(session)
-    return running || session.pendingUi.size > 0
+    return running || hasActiveAgent || session.pendingUi.size > 0
   }))
   return activity.some(Boolean)
 }
@@ -229,20 +285,28 @@ async function openSession(request: ManagerRequest): Promise<SessionSummary> {
   if (typeof cwd !== 'string' || typeof name !== 'string' || typeof sessionPath !== 'string') {
     throw new Error('Session cwd, name and path are required')
   }
+  const relation = parseRelation(request.relation)
+  if (request.relation !== undefined && !relation)
+    throw new Error('Invalid subagent session relation')
+  if (relation) validateRelation(relation)
 
   const opening = openingSessions.get(sessionPath)
   if (opening) {
     const summary = await opening
-    return { ...summary, pendingUi: [] }
+    const existing = sessions.get(summary.id)
+    if (relation && existing) attachRelayRelation(existing, relation)
+    return { ...(existing?.summary ?? summary), pendingUi: [] }
   }
 
   const existing = [...sessions.values()].find(({ summary }) => summary.sessionPath === sessionPath)
   if (existing?.switching) throw new Error('Pi session is switching')
-  if (existing && existing.summary.status !== 'exited')
+  if (existing && existing.summary.status !== 'exited') {
+    if (relation) attachRelayRelation(existing, relation)
     return {
       ...existing.summary,
       pendingUi: [...existing.pendingUi.values()],
     }
+  }
   if (existing?.summary.status === 'exited') sessions.delete(existing.summary.id)
 
   const operation = (async (): Promise<SessionSummary> => {
@@ -251,6 +315,7 @@ async function openSession(request: ManagerRequest): Promise<SessionSummary> {
       cwd,
       name,
       sessionPath,
+      ...(relation ? { subagentRelation: relation } : {}),
       status: 'starting',
       pendingUi: [],
     }
@@ -319,6 +384,7 @@ async function startSession(summary: SessionSummary): Promise<void> {
     ? [...sessions.values()].find((session) =>
       session.summary.cwd === summary.cwd
       && session.summary.status === 'idle'
+      && session.summary.activeAgent === undefined
       && session.pendingUi.size === 0
       && session.inFlightRequests === 0
       && !session.switching
@@ -337,6 +403,8 @@ async function startSession(summary: SessionSummary): Promise<void> {
     bufferedEvents: [],
     idleSince: undefined,
     activeToolCallId: undefined,
+    bridgeSnapshot: undefined,
+    relayStates: new Map(),
   }
 
   sessions.set(summary.id, session)
@@ -358,7 +426,16 @@ async function startSession(summary: SessionSummary): Promise<void> {
       ? state.data.sessionFile
       : undefined
     if (sessionPath) summary.sessionPath = sessionPath
-    markSessionIdle(session)
+    if (summary.subagentRelation) {
+      const parent = sessions.get(summary.subagentRelation.parentManagerSessionId)
+      if (parent && isLiveRelation(parent, summary.subagentRelation)) {
+        markSessionRunning(session)
+        replayRelayBuffer(parent, session, summary.subagentRelation)
+      } else {
+        delete summary.subagentRelation
+        markSessionIdle(session)
+      }
+    } else markSessionIdle(session)
   } catch (error) {
     sessions.delete(summary.id)
     await pi.terminate()
@@ -375,9 +452,10 @@ async function reuseSession(session: ManagedSession, summary: SessionSummary): P
     const running = piHasActiveWork(
       await requestPi(session, { type: 'get_state' }, 5_000),
     )
-    if (running) markSessionRunning(session)
+    const hasActiveAgent = session.summary.activeAgent !== undefined
+    if (running || hasActiveAgent) markSessionRunning(session)
     else markSessionIdle(session)
-    if (running || session.pendingUi.size > 0) {
+    if (running || hasActiveAgent || session.pendingUi.size > 0) {
       session.switching = false
       flushBufferedEvents(session)
       return false
@@ -395,7 +473,8 @@ async function reuseSession(session: ManagedSession, summary: SessionSummary): P
       return false
     }
     if (
-      session.pendingUi.size > 0
+      session.summary.activeAgent !== undefined
+      || session.pendingUi.size > 0
       || session.bufferedEvents.some((event) =>
         event.type === 'extension_ui_request'
         && isBlockingUiRequest(event)
@@ -412,8 +491,17 @@ async function reuseSession(session: ManagedSession, summary: SessionSummary): P
     sessions.delete(previousSessionId)
     session.summary = summary
     session.pendingUi.clear()
+    session.bridgeSnapshot = undefined
+    session.relayStates.clear()
     markSessionIdle(session, true)
     sessions.set(summary.id, session)
+    if (summary.subagentRelation) {
+      const parent = sessions.get(summary.subagentRelation.parentManagerSessionId)
+      if (parent && isLiveRelation(parent, summary.subagentRelation)) {
+        markSessionRunning(session)
+        replayRelayBuffer(parent, session, summary.subagentRelation)
+      } else delete session.summary.subagentRelation
+    }
     session.switching = false
     broadcast({
       kind: 'event',
@@ -530,6 +618,8 @@ async function sendCommand(request: ManagerRequest): Promise<JsonObject> {
   const session = sessions.get(request.sessionId)
   if (!session) throw new Error('Unknown session')
   if (session.summary.status === 'exited') throw new Error('Pi session has exited')
+  if (isLiveRelayChild(session) && !isLiveRelayChildReadOnlyCommand(request.command))
+    throw new Error('A running relay child is read-only; use Stop from its parent session')
   if (session.switching && request.command.type !== 'extension_ui_response')
     throw new Error('Pi session is switching')
 
@@ -578,6 +668,10 @@ function handlePiEvent(session: ManagedSession, event: JsonObject): void {
     session.bufferedEvents.push(event)
     return
   }
+  if (isSubagentRelayStatus(event)) {
+    handleSubagentRelayStatus(session, event)
+    return
+  }
   if (event.type === 'session_info_changed') {
     session.summary.name = typeof event.name === 'string' && event.name.trim()
       ? event.name.trim()
@@ -586,7 +680,8 @@ function handlePiEvent(session: ManagedSession, event: JsonObject): void {
   if (event.type === 'agent_start') markSessionRunning(session)
   if (event.type === 'agent_settled') {
     session.activeToolCallId = undefined
-    markSessionIdle(session, true)
+    if (session.summary.activeAgent === undefined) markSessionIdle(session, true)
+    else markSessionRunning(session)
   }
   if (event.type === 'tool_execution_start' && typeof event.toolCallId === 'string')
     session.activeToolCallId = event.toolCallId
@@ -600,12 +695,370 @@ function handlePiEvent(session: ManagedSession, event: JsonObject): void {
     event.activeAgent = session.summary.activeAgent
   }
   if (
+    event.type === 'extension_ui_request' && event.method === 'setStatus'
+    && event.statusKey === 'pi-livecraft.subagents'
+  ) {
+    const snapshot = typeof event.statusText === 'string'
+      ? parseBridgeSnapshot(event.statusText)
+      : undefined
+    if (!snapshot) return
+    const previous = session.bridgeSnapshot
+    event.statusText = snapshot.statusText
+    session.summary.subagentBridgeStatus = snapshot.statusText
+    session.bridgeSnapshot = snapshot
+    reconcileRelayChildren(session, previous, snapshot)
+  }
+  if (
     event.type === 'extension_ui_request' && isBlockingUiRequest(event)
     && typeof event.id === 'string'
   ) {
     session.pendingUi.set(event.id, event)
   }
   broadcast({ kind: 'event', event: 'pi', sessionId: session.summary.id, data: event })
+}
+
+/** Handles a child event status without exposing it as a parent conversation event. */
+function handleSubagentRelayStatus(session: ManagedSession, event: JsonObject): void {
+  const envelope = parseSubagentRelayEnvelope(event.statusText)
+  if (!envelope) return
+  const bridgeAgent = session.bridgeSnapshot?.agents.find(({ agentId }) =>
+    agentId === envelope.agentId
+  )
+  if (
+    !bridgeAgent || bridgeAgent.status !== 'running'
+    || bridgeAgent.childSessionId !== envelope.childSessionId
+  )
+    return
+
+  let state = session.relayStates.get(envelope.agentId)
+  if (!state || state.childSessionId !== envelope.childSessionId) {
+    state = {
+      childSessionId: envelope.childSessionId,
+      lastSequence: 0,
+      inProgress: false,
+      bufferedEvents: [],
+      bufferedBytes: 0,
+    }
+    session.relayStates.set(envelope.agentId, state)
+  }
+  if (envelope.sequence <= state.lastSequence) return
+  state.lastSequence = envelope.sequence
+  const child = relatedRelayChild(session, envelope.agentId, envelope.childSessionId)
+  if (envelope.event.type === 'agent_start' || envelope.event.type === 'turn_start') {
+    state.inProgress = true
+    state.bufferedEvents = []
+    state.bufferedBytes = 0
+  }
+  if (child) {
+    handlePiEvent(child, envelope.event)
+  } else if (state.inProgress) {
+    const eventBytes = jsonByteLength(envelope.event)
+    if (eventBytes <= maxRelayBufferBytes) {
+      while (
+        state.bufferedEvents.length >= maxRelayBufferEvents
+        || state.bufferedBytes + eventBytes > maxRelayBufferBytes
+      ) {
+        const removed = state.bufferedEvents.shift()
+        if (!removed) break
+        state.bufferedBytes -= jsonByteLength(removed)
+      }
+      state.bufferedEvents.push(envelope.event)
+      state.bufferedBytes += eventBytes
+    }
+  }
+  if (envelope.event.type === 'turn_end') {
+    state.inProgress = false
+    state.bufferedEvents = []
+    state.bufferedBytes = 0
+  }
+}
+
+function replayRelayBuffer(
+  parent: ManagedSession,
+  child: ManagedSession,
+  relation: SubagentSessionRelation,
+): void {
+  const state = parent.relayStates.get(relation.agentId)
+  if (!state || state.childSessionId !== relation.childSessionId) return
+  const buffered = state.bufferedEvents
+  state.bufferedEvents = []
+  state.bufferedBytes = 0
+  for (const event of buffered) handlePiEvent(child, event)
+}
+
+function relatedRelayChild(
+  parent: ManagedSession,
+  agentId: string,
+  childSessionId: string,
+): ManagedSession | undefined {
+  return [...sessions.values()].find((candidate) =>
+    candidate.summary.subagentRelation?.parentManagerSessionId === parent.summary.id
+    && candidate.summary.subagentRelation.agentId === agentId
+    && candidate.summary.subagentRelation.childSessionId === childSessionId
+    && candidate.summary.status !== 'exited'
+  )
+}
+
+function reconcileRelayChildren(
+  parent: ManagedSession,
+  previous: BridgeSnapshot | undefined,
+  current: BridgeSnapshot,
+): void {
+  for (const child of sessions.values()) {
+    const relation = child.summary.subagentRelation
+    if (!relation || relation.parentManagerSessionId !== parent.summary.id) continue
+    const agent = current.agents.find(({ agentId }) => agentId === relation.agentId)
+    const prior = previous?.agents.find(({ agentId }) => agentId === relation.agentId)
+    if (agent?.childSessionId === relation.childSessionId && agent.status === 'running') {
+      markSessionRunning(child)
+      continue
+    }
+    if (
+      prior?.status === 'running' || agent === undefined
+      || agent.childSessionId !== relation.childSessionId
+    ) {
+      settleRelayChild(child)
+      parent.relayStates.delete(relation.agentId)
+    }
+  }
+  for (const [agentId, state] of parent.relayStates) {
+    const agent = current.agents.find(({ agentId: currentAgentId }) => currentAgentId === agentId)
+    if (!agent || agent.status !== 'running' || agent.childSessionId !== state.childSessionId)
+      parent.relayStates.delete(agentId)
+  }
+}
+
+function settleRelayChild(child: ManagedSession): void {
+  if (child.summary.status === 'exited') return
+  handlePiEvent(child, { type: 'agent_settled' })
+  delete child.summary.subagentRelation
+  child.relayStates.clear()
+  markSessionIdle(child, true)
+}
+
+function isLiveRelayChild(session: ManagedSession): boolean {
+  return session.summary.status === 'running' && session.summary.subagentRelation !== undefined
+}
+
+/** Checks whether a command is one of the snapshot reads allowed for a live relay child. */
+function isLiveRelayChildReadOnlyCommand(command: JsonObject): boolean {
+  return typeof command.type === 'string' && liveRelayChildReadOnlyCommands.has(command.type)
+}
+
+function isSubagentRelayStatus(event: JsonObject): boolean {
+  return event.type === 'extension_ui_request'
+    && event.method === 'setStatus'
+    && event.statusKey === 'pi-livecraft.subagent-event'
+}
+
+function parseBridgeSnapshot(value: string): BridgeSnapshot | undefined {
+  if (byteLength(value) > 32_768) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return undefined
+  }
+  if (
+    !isObject(parsed) || !hasOnlyKeys(parsed, ['schemaVersion', 'agents'])
+    || parsed.schemaVersion !== 1 || !Array.isArray(parsed.agents)
+    || parsed.agents.length > maxBridgeAgents
+  ) return undefined
+  const agents: BridgeAgent[] = []
+  for (const row of parsed.agents) {
+    const agent = parseBridgeAgent(row)
+    if (!agent) return undefined
+    agents.push(agent)
+  }
+  const statusText = JSON.stringify({ schemaVersion: 1, agents })
+  return byteLength(statusText) <= 32_768 ? { agents, statusText } : undefined
+}
+
+function parseBridgeAgent(value: unknown): BridgeAgent | undefined {
+  if (
+    !isObject(value) || !hasOnlyKeys(value, [
+      'agentId',
+      'toolCallId',
+      'childSessionId',
+      'type',
+      'description',
+      'status',
+      'startedAt',
+      'completedAt',
+      'model',
+      'thinking',
+      'requestedModel',
+      'requestedThinking',
+      'toolUses',
+      'turnCount',
+      'latestActivity',
+      'tokens',
+    ])
+  ) return undefined
+  const agentId = boundedRelayIdentifier(value.agentId)
+  const toolCallId = value.toolCallId === undefined
+    ? undefined
+    : boundedRelayIdentifier(value.toolCallId)
+  const childSessionId = value.childSessionId === undefined
+    ? undefined
+    : boundedRelayIdentifier(value.childSessionId)
+  const type = boundedBridgeString(value.type)
+  const description = boundedBridgeString(value.description)
+  const status = bridgeStatus(value.status)
+  const startedAt = bridgeTimestamp(value.startedAt)
+  const completedAt = value.completedAt === undefined
+    ? undefined
+    : bridgeTimestamp(value.completedAt)
+  const thinking = optionalBridgeString(value.thinking)
+  const requestedModel = optionalBridgeString(value.requestedModel)
+  const requestedThinking = optionalBridgeString(value.requestedThinking)
+  const latestActivity = optionalBridgeString(value.latestActivity)
+  const toolUses = bridgeCounter(value.toolUses)
+  const turnCount = bridgeCounter(value.turnCount)
+  const model = parseBridgeModel(value.model)
+  const tokens = parseBridgeTokens(value.tokens)
+  if (
+    !agentId || (value.toolCallId !== undefined && !toolCallId)
+    || (value.childSessionId !== undefined && !childSessionId)
+    || !type || !description || !status || startedAt === undefined
+    || (value.completedAt !== undefined && completedAt === undefined)
+    || (value.thinking !== undefined && thinking === undefined)
+    || (value.requestedModel !== undefined && requestedModel === undefined)
+    || (value.requestedThinking !== undefined && requestedThinking === undefined)
+    || (value.latestActivity !== undefined && latestActivity === undefined)
+    || toolUses === undefined || turnCount === undefined || !tokens
+    || (value.model !== undefined && !model)
+  ) return undefined
+  return {
+    agentId,
+    ...(toolCallId ? { toolCallId } : {}),
+    ...(childSessionId ? { childSessionId } : {}),
+    type,
+    description,
+    status,
+    startedAt,
+    ...(completedAt !== undefined ? { completedAt } : {}),
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
+    ...(requestedModel ? { requestedModel } : {}),
+    ...(requestedThinking ? { requestedThinking } : {}),
+    toolUses,
+    turnCount,
+    ...(latestActivity ? { latestActivity } : {}),
+    tokens,
+  }
+}
+
+function parseBridgeModel(value: unknown): BridgeAgent['model'] | undefined {
+  if (!isObject(value) || !hasOnlyKeys(value, ['provider', 'modelId'])) return undefined
+  const provider = boundedBridgeString(value.provider)
+  const modelId = boundedBridgeString(value.modelId)
+  return provider && modelId ? { provider, modelId } : undefined
+}
+
+function parseBridgeTokens(value: unknown): BridgeAgent['tokens'] | undefined {
+  if (!isObject(value) || !hasOnlyKeys(value, ['input', 'output', 'cacheWrite'])) return undefined
+  const input = bridgeCounter(value.input)
+  const output = bridgeCounter(value.output)
+  const cacheWrite = bridgeCounter(value.cacheWrite)
+  return input !== undefined && output !== undefined && cacheWrite !== undefined
+    ? { input, output, cacheWrite }
+    : undefined
+}
+
+function bridgeStatus(value: unknown): BridgeAgent['status'] | undefined {
+  return value === 'running' || value === 'completed' || value === 'failed' || value === 'cancelled'
+    ? value
+    : undefined
+}
+
+function boundedBridgeString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxBridgeStringLength
+      && !/[\u0000-\u001f]/.test(value)
+    ? value
+    : undefined
+}
+
+function optionalBridgeString(value: unknown): string | undefined {
+  return value === undefined ? undefined : boundedBridgeString(value)
+}
+
+function bridgeCounter(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+      && value <= maxBridgeCounter
+    ? value
+    : undefined
+}
+
+function bridgeTimestamp(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+function parseRelation(value: unknown): SubagentSessionRelation | undefined {
+  if (
+    !isObject(value) || !hasOnlyKeys(value, [
+      'parentManagerSessionId',
+      'agentId',
+      'childSessionId',
+    ])
+  ) return undefined
+  const parentManagerSessionId = boundedRelayIdentifier(value.parentManagerSessionId)
+  const agentId = boundedRelayIdentifier(value.agentId)
+  const childSessionId = boundedRelayIdentifier(value.childSessionId)
+  return parentManagerSessionId && agentId && childSessionId
+    ? { parentManagerSessionId, agentId, childSessionId }
+    : undefined
+}
+
+function validateRelation(relation: SubagentSessionRelation): ManagedSession {
+  const parent = sessions.get(relation.parentManagerSessionId)
+  if (!parent || parent.summary.status === 'exited')
+    throw new Error('Parent session is unavailable')
+  if (!isLiveRelation(parent, relation)) throw new Error('Subagent is no longer running')
+  return parent
+}
+
+function isLiveRelation(parent: ManagedSession, relation: SubagentSessionRelation): boolean {
+  return parent.bridgeSnapshot?.agents.some((agent) =>
+    agent.agentId === relation.agentId
+    && agent.childSessionId === relation.childSessionId
+    && agent.status === 'running'
+  ) ?? false
+}
+
+function attachRelayRelation(child: ManagedSession, relation: SubagentSessionRelation): void {
+  validateRelation(relation)
+  if (
+    child.summary.subagentRelation
+    && JSON.stringify(child.summary.subagentRelation) !== JSON.stringify(relation)
+  )
+    throw new Error('Session is already observing another subagent')
+  child.summary.subagentRelation = relation
+  const parent = sessions.get(relation.parentManagerSessionId)
+  if (!parent) throw new Error('Parent session is unavailable')
+  markSessionRunning(child)
+  replayRelayBuffer(parent, child, relation)
+}
+
+function hasOnlyKeys(value: JsonObject, keys: readonly string[]): boolean {
+  const allowed = new Set(keys)
+  return Object.keys(value).every((key) => allowed.has(key))
+}
+
+function boundedRelayIdentifier(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxRelayIdentifierLength
+      && !/[\u0000-\u001f]/.test(value)
+    ? value
+    : undefined
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength
+}
+
+function jsonByteLength(value: unknown): number {
+  const serialized = JSON.stringify(value)
+  return typeof serialized === 'string' ? byteLength(serialized) : maxRelayBufferBytes + 1
 }
 
 function activeAgentFromStatus(statusText: unknown): string | undefined {

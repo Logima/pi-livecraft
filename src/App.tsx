@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
 import {
+  closeSession,
   commitChanges,
   createSession,
   discardChanges,
@@ -34,6 +35,16 @@ import { Composer } from './features/composer/Composer.tsx'
 import { ToastStack, type Toast } from './features/notifications/ToastStack.tsx'
 import { sessionActivity, type PiConnection } from './features/conversation/activity.ts'
 import { Conversation } from './features/conversation/Conversation.tsx'
+import { SubagentMonitor } from './features/conversation/SubagentMonitor.tsx'
+import {
+  subagentRelationForRow,
+  subagentStopPrompt,
+} from './features/conversation/subagent-monitor.ts'
+import {
+  parseSubagentBridgeSnapshot,
+  subagentBridgeStatusKey,
+  type SubagentBridgeSnapshot,
+} from './features/conversation/subagent-bridge.ts'
 import { useConversationRuntime } from './features/conversation/useConversationRuntime.ts'
 import { AskUserQuestionDialog, ExtensionDialog } from './features/dialogs/Dialogs.tsx'
 import {
@@ -97,6 +108,12 @@ import {
 import './features/commands/commands.css'
 
 const emptyAgentOptions: string[] = []
+const relayReadOnlyCommandIds: ReadonlySet<CommandId> = new Set([
+  'send',
+  'open-agent',
+  'open-model',
+  'open-thinking',
+])
 const conversationViewDetails = {
   simple: { label: 'Simplified view', description: 'Messages only, without tool calls' },
   'semi-detailed': {
@@ -141,6 +158,9 @@ function App() {
   // Dialogs and notifications
   const [agentOptions, setAgentOptions] = useState<Record<string, string[]>>({})
   const [agentBusy, setAgentBusy] = useState<Record<string, boolean>>({})
+  const [subagentBridgeSnapshots, setSubagentBridgeSnapshots] = useState<
+    Record<string, SubagentBridgeSnapshot>
+  >({})
   const [agentOptionsLoading, setAgentOptionsLoading] = useState<Record<string, boolean>>({})
   const agentOptionsLoadingRef = useRef(agentOptionsLoading)
   useEffect(() => {
@@ -385,16 +405,59 @@ function App() {
     [selectWorkspace, startWorkspaceSession],
   )
 
-  /** Opens the persisted child session identified by an Agent tool result. */
+  const selectedParentBridgeSnapshot = selectedId
+    ? subagentBridgeSnapshots[selectedId]
+      ?? parseSubagentBridgeSnapshot(
+        sessions
+          .find((session) => session.id === selectedId)
+          ?.subagentBridgeStatus,
+      )
+    : undefined
+
+  /** Opens an Agent transcript, attaching the parent relay while its bridge row is running. */
   const openAgentSession = useCallback(async (agentId: string): Promise<void> => {
-    const parentPath = sessions.find((session) => session.id === selectedId)?.sessionPath
+    const parent = sessions.find((session) => session.id === selectedId)
+    const parentPath = parent?.sessionPath
     if (!parentPath) throw new Error('Agent session is unavailable')
+    const bridgeAgent = selectedParentBridgeSnapshot?.agents.find(({ agentId: currentId }) =>
+      currentId === agentId
+    )
+    const relation = bridgeAgent
+      ? subagentRelationForRow(selectedId, bridgeAgent)
+      : undefined
     const currentRelated = relatedAgentSession(recentSessions, parentPath, agentId)
     const related = currentRelated
       ?? relatedAgentSession(await listRecentSessions(workspacePath), parentPath, agentId)
     if (!related) throw new Error('Agent session is unavailable')
-    await startAndSelectSession(() => openSession(related.cwd, related.sessionPath))
-  }, [recentSessions, selectedId, sessions, startAndSelectSession, workspacePath])
+    const existing = sessions.find((session) => session.sessionPath === related.sessionPath)
+    if (
+      existing?.subagentRelation && relation
+      && existing.subagentRelation.parentManagerSessionId === relation.parentManagerSessionId
+      && existing.subagentRelation.agentId === relation.agentId
+      && existing.subagentRelation.childSessionId === relation.childSessionId
+    ) {
+      setSelectedId(existing.id)
+      return
+    }
+    const reusable = existing?.status === 'idle'
+        && existing.activeAgent === undefined
+        && existing.pendingUi.length === 0
+      ? existing
+      : undefined
+    await startAndSelectSession(async () => {
+      if (reusable) await closeSession(reusable.id)
+      return openSession(related.cwd, related.sessionPath, relation)
+    })
+  }, [
+    closeSession,
+    recentSessions,
+    selectedId,
+    selectedParentBridgeSnapshot,
+    sessions,
+    setSelectedId,
+    startAndSelectSession,
+    workspacePath,
+  ])
 
   const {
     activity,
@@ -669,6 +732,16 @@ function App() {
       ) void refreshSessions()
       if (
         event.type === 'extension_ui_request' && event.method === 'setStatus'
+        && event.statusKey === subagentBridgeStatusKey
+      ) {
+        const bridgeSnapshot = parseSubagentBridgeSnapshot(event.statusText)
+        if (bridgeSnapshot) {
+          setSubagentBridgeSnapshots((current) => ({ ...current, [sessionId]: bridgeSnapshot }))
+        }
+        return
+      }
+      if (
+        event.type === 'extension_ui_request' && event.method === 'setStatus'
         && event.statusKey === 'agent'
       ) {
         updateSession(sessionId, {
@@ -762,6 +835,14 @@ function App() {
       }
       if (managerEvent.event === 'manager_status' && isManagerRuntimeStatus(managerEvent.data))
         setManagerRuntimeStatus(managerEvent.data)
+      if (managerEvent.event === 'session_exited' || managerEvent.event === 'session_reassigned') {
+        setSubagentBridgeSnapshots((current) => {
+          if (!(managerEvent.sessionId in current)) return current
+          const next = { ...current }
+          delete next[managerEvent.sessionId]
+          return next
+        })
+      }
       if (
         managerEvent.event === 'manager_connected' || managerEvent.event === 'session_created'
         || managerEvent.event === 'session_exited' || managerEvent.event === 'session_reassigned'
@@ -789,6 +870,9 @@ function App() {
   // Selected session and loading state
   const selectedSession = sessions.find((session) => session.id === selectedId)
   const selectedSessionId = selectedSession?.id
+  const selectedBridgeSnapshot = selectedParentBridgeSnapshot
+  const selectedRelayRunning = selectedSession?.status === 'running'
+    && selectedSession.subagentRelation !== undefined
   const selectedSessionStatus = selectedSession?.status
   const sessionIsLoading = Boolean(selectedSessionId && snapshotSessionId !== selectedSessionId)
 
@@ -821,20 +905,46 @@ function App() {
     [showToast],
   )
   const handleComposerAgentChange = useCallback(
-    (agent: string) => activateAgent(selectedId, agent),
-    [activateAgent, selectedId],
+    (agent: string) => {
+      if (selectedRelayRunning) {
+        showToast('error', 'A running relay child is read-only.')
+        return
+      }
+      activateAgent(selectedId, agent)
+    },
+    [activateAgent, selectedId, selectedRelayRunning, showToast],
   )
-  const handleComposerRequestAgentOptions = useCallback(
-    () => fetchAgentOptions(selectedId),
-    [fetchAgentOptions, selectedId],
-  )
+  const handleComposerRequestAgentOptions = useCallback(() => {
+    if (selectedRelayRunning) {
+      showToast('error', 'A running relay child is read-only.')
+      return
+    }
+    fetchAgentOptions(selectedId)
+  }, [fetchAgentOptions, selectedId, selectedRelayRunning, showToast])
+  /** Stops the selected session, routing relay children through their owning parent. */
+  const stopSelectedSession = useCallback(async (): Promise<JsonObject> => {
+    const relation = selectedSession?.subagentRelation
+    const targetSessionId = selectedRelayRunning && relation
+      ? relation.parentManagerSessionId
+      : selectedId
+    const command: JsonObject = selectedRelayRunning && relation
+      ? { type: 'prompt', message: subagentStopPrompt(relation.agentId) }
+      : { type: 'abort' }
+    const result = await sendPiCommand(targetSessionId, command)
+    if (result.success === false) {
+      throw new Error(typeof result.error === 'string' ? result.error : 'Unable to stop subagent')
+    }
+    await refreshSessions()
+    return result
+  }, [refreshSessions, selectedId, selectedRelayRunning, selectedSession])
   /** Executes a composer command and synchronizes capabilities affected by it. */
   const handleComposerCommand = useCallback(async (command: JsonObject) => {
+    if (selectedRelayRunning) throw new Error('A running relay child is read-only.')
     const result = await sendPiCommand(selectedId, command)
     await refreshSnapshot(selectedId)
     if (command.type === 'compact') showToast('notice', 'Session compacted.')
     return result
-  }, [refreshSnapshot, selectedId, showToast])
+  }, [refreshSnapshot, selectedId, selectedRelayRunning, showToast])
   /** Sends the current draft with the behavior supported by the active session. */
   const handleComposerSend = useCallback(
     async (
@@ -843,6 +953,7 @@ function App() {
       behavior: 'steer' | 'followUp',
       isCommand: boolean,
     ) => {
+      if (selectedRelayRunning) throw new Error('A running relay child is read-only.')
       const command: JsonObject = { type: 'prompt', message, images }
       const isSteering = !isCommand && selectedSessionStatus === 'running' && behavior === 'steer'
       if (selectedSessionStatus === 'running') command.streamingBehavior = behavior
@@ -872,18 +983,20 @@ function App() {
       removeLiveMessage,
       removePendingSteering,
       selectedId,
+      selectedRelayRunning,
       selectedSessionStatus,
       sessions,
       snapshot.messages,
     ],
   )
-  const handleComposerAbort = useCallback(() => sendPiCommand(selectedId, { type: 'abort' }), [
-    selectedId,
-  ])
+  const handleComposerAbort = stopSelectedSession
   /** Force-kills descendants of the Pi process that belong to a stuck tool call. */
   const handleToolKill = useCallback(
-    (toolCallId: string) => sendPiCommand(selectedId, { type: 'kill_tool', toolCallId }),
-    [selectedId],
+    (toolCallId: string) =>
+      selectedRelayRunning
+        ? Promise.reject(new Error('A running relay child is read-only.'))
+        : sendPiCommand(selectedId, { type: 'kill_tool', toolCallId }),
+    [selectedId, selectedRelayRunning],
   )
   const handlePromptImprovement = useCallback(
     (prompt: string, direction?: string) => improvePrompt(selectedId, prompt, direction),
@@ -974,12 +1087,14 @@ function App() {
       return
     }
     if (id === 'abort' && selectedId) {
-      void sendPiCommand(selectedId, { type: 'abort' }).catch((cause) =>
-        showToast('error', messageOf(cause))
-      )
+      void stopSelectedSession().catch((cause) => showToast('error', messageOf(cause)))
       return
     }
     if (id === 'open-agent' || id === 'open-model' || id === 'open-thinking') {
+      if (selectedRelayRunning) {
+        showToast('error', 'A running relay child is read-only.')
+        return
+      }
       setRequestedSelect(id === 'open-agent' ? 'agent' : id === 'open-model' ? 'model' : 'thinking')
       return
     }
@@ -1041,6 +1156,8 @@ function App() {
     showToast,
     snapshot.messages,
     createNewSession,
+    selectedRelayRunning,
+    stopSelectedSession,
     terminalCommand,
     workspacePath,
   ])
@@ -1068,6 +1185,7 @@ function App() {
             ] as CommandId[])
               .includes(definition.id) && !selectedSession
           || (definition.id === 'abort' && selectedSession?.status !== 'running')
+          || (selectedRelayRunning && relayReadOnlyCommandIds.has(definition.id))
           || (definition.id === 'workspace-previous' && recentWorkspacePaths.length < 2)
           || (definition.id === 'next-session'
             && (selectedIndex === -1 || selectedIndex >= visibleIds.length - 1))
@@ -1082,6 +1200,7 @@ function App() {
     recentWorkspacePaths,
     selectedId,
     selectedSession,
+    selectedRelayRunning,
     sentSessions,
     analysisAvailable,
     shortcuts,
@@ -1229,6 +1348,7 @@ function App() {
                   <Conversation
                     activity={displayedActivity}
                     agentName={selectedSession.activeAgent}
+                    bridgeSnapshot={selectedParentBridgeSnapshot}
                     conversationView={conversationView}
                     key={selectedSession.id}
                     liveMessages={liveMessages}
@@ -1309,6 +1429,14 @@ function App() {
                       />
                     )}
                     <ToastStack onDismiss={dismissToast} toasts={visibleToasts} />
+                    <SubagentMonitor
+                      liveMessages={liveMessages}
+                      bridgeSnapshot={selectedBridgeSnapshot}
+                      messages={snapshot.messages}
+                      onError={handleConversationError}
+                      onOpenAgentSession={openAgentSession}
+                      toolExecutions={toolExecutions}
+                    />
                     <Composer
                       key={selectedSession.id}
                       session={selectedSession}
