@@ -14,27 +14,41 @@ export interface SequencedPiEvent {
 export class LiveSessionEvents {
   readonly #events = new Map<string, SequencedPiEvent>()
   #assistantMessage: JsonObject | null = null
+  readonly retainCompletedMessages: boolean
+
+  constructor(retainCompletedMessages = false) {
+    this.retainCompletedMessages = retainCompletedMessages
+  }
 
   receive(data: JsonObject, sequence: number): void {
     const type = data.type
     if (type === 'agent_settled') {
-      this.#events.clear()
+      if (!this.retainCompletedMessages) this.#events.clear()
       this.#assistantMessage = null
       return
     }
-    if (type === 'agent_start') this.#events.set('agent', { data, sequence })
+    if (type === 'agent_start') this.#events.set(
+      this.retainCompletedMessages ? `agent:${String(sequence)}` : 'agent',
+      { data, sequence },
+    )
     if (type === 'queue_update') this.#events.set('queue', { data, sequence })
     if (type === 'message_start') {
-      this.#deletePrefix('message:')
+      if (!this.retainCompletedMessages) this.#deletePrefix('message:')
       this.#assistantMessage = assistantMessageInEvent(data)
-      this.#events.set('message:start', { data, sequence })
+      this.#events.set(
+        this.retainCompletedMessages ? `message:${String(sequence)}` : 'message:start',
+        { data, sequence },
+      )
     }
     if (type === 'message_update') {
       const message = assistantMessageAfterEvent(this.#assistantMessage, data)
       if (message) this.#assistantMessage = message
       // RPC deltas omit cumulative messages; retain one assembled message for snapshot replay.
       const storedData = message ? { ...data, message } : data
-      this.#events.set('message:update', { data: storedData, sequence })
+      this.#events.set(
+        this.retainCompletedMessages ? `message:${String(sequence)}` : 'message:update',
+        { data: storedData, sequence },
+      )
       const update = isObject(data.assistantMessageEvent) ? data.assistantMessageEvent : undefined
       if (
         (update?.type === 'toolcall_start' || update?.type === 'toolcall_delta' || update
@@ -47,7 +61,13 @@ export class LiveSessionEvents {
         })
     }
     if (type === 'message_end') {
-      this.#deletePrefix('message:')
+      if (this.retainCompletedMessages) {
+        const message = assistantMessageAfterEvent(this.#assistantMessage, data)
+        this.#events.set(`message:${String(sequence)}`, {
+          data: message ? { ...data, message } : data,
+          sequence,
+        })
+      } else this.#deletePrefix('message:')
       this.#assistantMessage = null
     }
     if (

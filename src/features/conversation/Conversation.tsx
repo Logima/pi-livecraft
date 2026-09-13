@@ -12,7 +12,7 @@ import {
 } from 'react'
 import type { JsonObject } from '../../../shared/types.ts'
 import type { Activity } from './activity.ts'
-import { turnUsageByMessage } from './message-usage.ts'
+import { messageUsage, turnUsageByMessage } from './message-usage.ts'
 import {
   assistantTurnParts,
   conversationMessageEntries,
@@ -126,16 +126,8 @@ export const Conversation = memo(function Conversation(
       ]),
     [resultsByCallId, toolExecutions],
   )
-  const { usagesByMessage, turnNumbers } = useMemo(
-    () => {
-      const usagesByMessage = turnUsageByMessage(allMessages, resolvedCallIds)
-      const turnNumbers = new Map<number, number>()
-      let turnNum = 0
-      for (const idx of [...usagesByMessage.keys()].sort((a, b) => a - b)) {
-        turnNumbers.set(idx, ++turnNum)
-      }
-      return { usagesByMessage, turnNumbers }
-    },
+  const usagesByMessage = useMemo(
+    () => turnUsageByMessage(allMessages, resolvedCallIds),
     [allMessages, resolvedCallIds],
   )
   const liveToolCallIds = useMemo(
@@ -151,6 +143,17 @@ export const Conversation = memo(function Conversation(
     allMessages,
     liveMessages,
   ])
+  const turnNumberByEntryKey = useMemo(() => {
+    const numbers = new Map<string, number>()
+    let turnNumber = 0
+    for (const entry of messageEntries) {
+      const usage = entry.source === 'history'
+        ? usagesByMessage.get(entry.historyIndex)
+        : messageUsage(entry.message)
+      if (usage && hasNonZeroUsage(usage)) numbers.set(entry.key, ++turnNumber)
+    }
+    return numbers
+  }, [messageEntries, usagesByMessage])
   const initialHistoryStart = useMemo(
     () => conversationHistoryStart(allMessages, allMessages.length),
     [allMessages],
@@ -426,12 +429,12 @@ export const Conversation = memo(function Conversation(
                     />
                   )
                 })}
-                {usage && (
+                {usage && hasNonZeroUsage(usage) && (
                   <TurnUsage
                     timestamp={typeof message.timestamp === 'number'
                       ? message.timestamp
                       : undefined}
-                    turnNumber={turnNumbers.get(index)}
+                    turnNumber={turnNumberByEntryKey.get(entry.key)}
                     usage={usage}
                   />
                 )}
@@ -440,6 +443,7 @@ export const Conversation = memo(function Conversation(
           }
 
           const parts = assistantTurnParts(message)
+          const usage = messageUsage(message)
           const calls = showToolCalls
             ? parts.flatMap((part) => part.kind === 'tool' ? [part.call] : [])
             : []
@@ -494,6 +498,15 @@ export const Conversation = memo(function Conversation(
                   />
                 )
               })}
+              {usage && hasNonZeroUsage(usage) && (
+                <TurnUsage
+                  timestamp={typeof message.timestamp === 'number'
+                    ? message.timestamp
+                    : undefined}
+                  turnNumber={turnNumberByEntryKey.get(entry.key)}
+                  usage={usage}
+                />
+              )}
             </div>
           )
         })}
@@ -580,6 +593,16 @@ export const Conversation = memo(function Conversation(
 })
 
 export { ActivityIndicator } from './ActivityIndicator.tsx'
+
+function hasNonZeroUsage(usage: ReturnType<typeof messageUsage>): boolean {
+  return usage !== null && (
+    usage.cacheMiss !== 0
+    || usage.cacheRead !== 0
+    || usage.cacheWrite !== 0
+    || usage.cost !== 0
+    || usage.output !== 0
+  )
+}
 
 function navigationTargetKey(target: SessionAnalysisTarget): string {
   return target.kind === 'tool' ? `tool:${target.id}` : `message:${target.index}`

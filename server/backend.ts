@@ -56,11 +56,16 @@ const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
 
 manager.on('event', (event: ManagerEvent) => {
   quotas.receiveManagerEvent(event)
-  if (event.event === 'session_exited' || event.event === 'session_reassigned')
-    liveSessionEvents.delete(event.sessionId)
+  if (event.event === 'session_exited') liveSessionEvents.delete(event.sessionId)
+  if (event.event === 'session_reassigned') {
+    const live = liveSessionEvents.get(event.sessionId)
+    if (!live?.retainCompletedMessages) liveSessionEvents.delete(event.sessionId)
+  }
   if (event.event === 'pi' && isObject(event.data)) {
     const sequence = ++piEventSequence
-    const live = liveSessionEvents.get(event.sessionId) ?? new LiveSessionEvents()
+    const live = liveSessionEvents.get(event.sessionId) ?? new LiveSessionEvents(
+      isRelaySessionEvent(event),
+    )
     liveSessionEvents.set(event.sessionId, live)
     live.receive(event.data, sequence)
     broadcast({ ...event, sequence })
@@ -685,6 +690,11 @@ function boundedIdentifier(value: unknown): string | undefined {
 function hasOnlyKeys(value: JsonObject, keys: readonly string[]): boolean {
   const allowed = new Set(keys)
   return Object.keys(value).every((key) => allowed.has(key))
+}
+
+function isRelaySessionEvent(event: ManagerEvent): boolean {
+  if (event.event !== 'session_created' || !isObject(event.data)) return false
+  return isObject(event.data.subagentRelation)
 }
 
 function errorMessage(error: unknown): string {

@@ -35,6 +35,8 @@ import { Composer } from './features/composer/Composer.tsx'
 import { ToastStack, type Toast } from './features/notifications/ToastStack.tsx'
 import { sessionActivity, type PiConnection } from './features/conversation/activity.ts'
 import { Conversation } from './features/conversation/Conversation.tsx'
+import { conversationMessageEntries } from './features/conversation/message-reconciliation.ts'
+import { messageUsage } from './features/conversation/message-usage.ts'
 import { SubagentMonitor } from './features/conversation/SubagentMonitor.tsx'
 import {
   subagentRelationForRow,
@@ -1029,16 +1031,29 @@ function App() {
   const handleComposerSelectOpened = useCallback(() => setRequestedSelect(null), [])
   const analysisAvailable = selectedSession !== undefined
     && snapshotSessionId === selectedSession.id
+  const analysisMessages = useMemo(() => {
+    const liveById = new Map(liveMessages.map((live) => [live.id, live.message]))
+    return conversationMessageEntries(snapshot.messages, liveMessages).flatMap((entry) => {
+      const message = liveById.get(entry.key) ?? entry.message
+      if (message.role !== 'assistant' || entry.source !== 'live') return [message]
+      const usage = messageUsage(message)
+      if (!usage || usage.cacheMiss !== 0 || usage.cacheRead !== 0 || usage.cacheWrite !== 0
+        || usage.output !== 0 || usage.cost !== 0) return [message]
+      const { usage: _usage, ...withoutUsage } = message
+      return [withoutUsage]
+    })
+  }, [liveMessages, snapshot.messages])
   const sessionAnalysis = useMemo(() =>
     !analysisAvailable || activeRightWidget !== 'analysis'
       ? null
-      : analyzeSession(snapshot.messages, snapshot.stats, selectedSession.status === 'running', {
+      : analyzeSession(analysisMessages, snapshot.stats, selectedSession.status === 'running', {
         requestDurations: observedRequestDurations,
         toolDurations: observedToolDurations,
         toolExecutions,
       }), [
     activeRightWidget,
     analysisAvailable,
+    analysisMessages,
     observedRequestDurations,
     observedToolDurations,
     selectedSession,

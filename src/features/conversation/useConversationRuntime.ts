@@ -146,6 +146,13 @@ export function useConversationRuntime(
         const version = ++snapshotRefreshVersionRef.current
         try {
           nextSnapshot = await getSnapshot(sessionId)
+          const cachedSnapshot = snapshotCacheRef.current.get(sessionId)
+          // A relay child has no Pi history of its own; keep its retained stream when
+          // process reassignment briefly returns an otherwise empty snapshot.
+          if (
+            cachedSnapshot && cachedSnapshot.liveEvents.length > 0
+            && nextSnapshot.liveEvents.length === 0
+          ) nextSnapshot = { ...nextSnapshot, liveEvents: cachedSnapshot.liveEvents }
           snapshotCacheRef.current.set(sessionId, nextSnapshot)
           if (request.cancelled) return nextSnapshot
           if (version !== snapshotRefreshVersionRef.current || sessionId !== selectedIdRef.current)
@@ -204,18 +211,20 @@ export function useConversationRuntime(
             setPendingSteering(steering)
         })
       }
-      if (event.type === 'agent_start') requestStartedAtRef.current = performance.now()
-      if (event.type === 'agent_end' && event.willRetry !== true) {
+      if (
+        event.type === 'agent_start'
+        || event.type === 'turn_start'
+      ) requestStartedAtRef.current = performance.now()
+      if (
+        (event.type === 'agent_end' && event.willRetry !== true) || event.type === 'turn_end'
+      ) {
         const startedAt = requestStartedAtRef.current
         const output = outputTokensInAgentEnd(event)
-        if (startedAt !== undefined && output > 0) {
-          setObservedResponseSpeeds((current) =>
-            new Map(current).set(
-              sessionId,
-              output / ((performance.now() - startedAt) / 1000),
-            )
-          )
-        }
+        if (startedAt !== undefined && output > 0)
+          setObservedResponseSpeeds((current) => new Map(current).set(
+            sessionId,
+            output / ((performance.now() - startedAt) / 1000),
+          ))
       }
       const streamedToolCall = toolCallInUpdate(event)
       if (streamedToolCall) {
@@ -298,12 +307,14 @@ export function useConversationRuntime(
         const message = assistantMessageAfterEvent(live?.message ?? null, event)
         if (message) queueLiveMessage(message)
       }
-      const settledRequestDuration = event
-              .type === 'agent_settled' && requestStartedAtRef.current !== undefined
+      // Relay-only child sessions may expose turn_end without the parent RPC's settled event.
+      const requestEnded = (event.type === 'agent_end' && event.willRetry !== true)
+        || event.type === 'agent_settled'
+      const settledRequestDuration = requestEnded && requestStartedAtRef.current !== undefined
         ? performance.now() - requestStartedAtRef.current
         : undefined
-      if (event.type === 'agent_settled') requestStartedAtRef.current = undefined
-      if (event.type === 'message_end' || event.type === 'agent_settled') {
+      if (requestEnded) requestStartedAtRef.current = undefined
+      if (event.type === 'message_end' || requestEnded) {
         flushLiveUpdates()
         setToolExecutions(interruptToolCallGeneration)
         void refreshSnapshot(sessionId).then((nextSnapshot) => {
@@ -414,10 +425,12 @@ export function useConversationRuntime(
   }
 }
 
-/** Sums provider-reported output tokens from one low-level agent run. */
+/** Sums provider-reported output totals from an agent or turn end event. */
 function outputTokensInAgentEnd(event: JsonObject): number {
-  if (!Array.isArray(event.messages)) return 0
-  return event.messages.reduce((total, message) => {
+  const messages = Array.isArray(event.messages)
+    ? event.messages
+    : [event.message, ...(Array.isArray(event.toolResults) ? event.toolResults : [])]
+  return messages.reduce((total, message) => {
     if (!isObject(message) || (message.role !== 'assistant' && message.role !== 'toolResult'))
       return total
     const usage = isObject(message.usage) ? message.usage.output : undefined
