@@ -24,6 +24,7 @@ import {
 } from './sidebar-sessions.ts'
 import { SessionRenameDialog } from './SessionRenameDialog.tsx'
 import { maxWorkspaceSidebarWidth, minWorkspaceSidebarWidth } from './workspace-sidebar.ts'
+import { urlForSession } from './session-url.ts'
 
 interface ContextMenuState {
   target: SessionActionTarget
@@ -101,9 +102,9 @@ export function WorkspaceSidebar({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState({ left: 0, top: 0 })
   const [renameTarget, setRenameTarget] = useState<SessionActionTarget | null>(null)
-  const selectedSessionRef = useRef<HTMLButtonElement>(null)
+  const selectedSessionRef = useRef<HTMLAnchorElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
-  const contextMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const contextMenuTriggerRef = useRef<HTMLButtonElement | HTMLAnchorElement>(null)
   const pinnedSessionPaths = useMemo(
     () => new Set(pinnedSessions.map((session) => session.sessionPath)),
     [pinnedSessions],
@@ -211,7 +212,7 @@ export function WorkspaceSidebar({
 
   function openContextMenu(
     target: SessionActionTarget,
-    event: ReactMouseEvent<HTMLButtonElement>,
+    event: ReactMouseEvent<HTMLButtonElement | HTMLAnchorElement>,
   ): void {
     event.preventDefault()
     contextMenuTriggerRef.current = event.currentTarget
@@ -220,7 +221,7 @@ export function WorkspaceSidebar({
 
   function openContextMenuFromKeyboard(
     target: SessionActionTarget,
-    event: ReactKeyboardEvent<HTMLButtonElement>,
+    event: ReactKeyboardEvent<HTMLButtonElement | HTMLAnchorElement>,
   ): void {
     if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return
     event.preventDefault()
@@ -374,15 +375,18 @@ export function WorkspaceSidebar({
               new Date(recentSession.updatedAt).toLocaleString('en-US', { hourCycle: 'h23' })
             }`}
           >
-            <button
+            <a
+              aria-disabled={openingSessionPath === recentSession.sessionPath || undefined}
+              aria-haspopup='menu'
               className={`session-item${activeSession?.id === selectedId ? ' selected' : ''}${
                 indicatorClass ? ` ${indicatorClass}` : ''
               }${isPinned ? ' pinned' : ''}`}
-              aria-haspopup='menu'
-              disabled={openingSessionPath === recentSession.sessionPath}
+              href={urlForSession(activeSession?.id ?? recentSession.id)}
               onContextMenu={(event) => openContextMenu(actionTarget, event)}
               onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
-              onClick={() => {
+              onClick={(event) => {
+                event.preventDefault()
+                if (openingSessionPath === recentSession.sessionPath) return
                 if (activeSession) {
                   onSelectSession(activeSession.id)
                   return
@@ -393,14 +397,13 @@ export function WorkspaceSidebar({
                 )
               }}
               ref={activeSession?.id === selectedId ? selectedSessionRef : undefined}
-              type='button'
             >
               {indicator && <SessionStatusIndicator label={indicatorLabel} status={indicator} />}
               {isPinned && <PinIcon />}
               <span>
                 <strong>{sessionLabel}</strong>
               </span>
-            </button>
+            </a>
           </Tooltip>
         </div>
         {isExpanded && node.children.length > 0 && (
@@ -416,6 +419,9 @@ export function WorkspaceSidebar({
   function renderWorkspaceActivityItem(item: WorkspaceActivityItem) {
     const session = item.session
     const isManaged = item.kind === 'managed'
+    const linkedSessionId = item.kind === 'managed'
+      ? item.session.id
+      : sessions.find((candidate) => candidate.sessionPath === session.sessionPath)?.id
     const indicator = item.kind === 'managed'
       ? sessionIndicator(item.session, selectedId, compactingSessionIds, completedSessionIds)
       : null
@@ -435,20 +441,24 @@ export function WorkspaceSidebar({
         key={item.kind === 'managed' ? item.session.id : item.session.sessionPath}
         label={`${session.name}\n${session.cwd}`}
       >
-        <button
+        <a
+          aria-disabled={!isManaged && openingSessionPath === session.sessionPath
+            ? true
+            : undefined}
           aria-haspopup='menu'
           aria-label={label}
           className={`session-item workspace-activity-session${indicator ? ` ${indicator}` : ''}${
             isPinned ? ' pinned' : ''
           }`}
-          disabled={!isManaged && openingSessionPath === session.sessionPath}
+          href={urlForSession(linkedSessionId ?? '')}
           onContextMenu={(event) => openContextMenu(actionTarget, event)}
           onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
-          onClick={() => {
+          onClick={(event) => {
+            event.preventDefault()
+            if (!isManaged && openingSessionPath === session.sessionPath) return
             if (item.kind === 'managed') onSelectOtherWorkspaceSession(item.session)
             else openPinnedSession(item.session)
           }}
-          type='button'
         >
           {indicator && <SessionStatusIndicator status={indicator} />}
           {isPinned && <PinIcon />}
@@ -456,7 +466,7 @@ export function WorkspaceSidebar({
             <strong>{session.name}</strong>
             <small>{session.cwd}</small>
           </span>
-        </button>
+        </a>
       </Tooltip>
     )
   }

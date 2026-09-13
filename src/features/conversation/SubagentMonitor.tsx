@@ -3,6 +3,7 @@ import type { JsonObject } from '../../../shared/types.ts'
 import type { LiveMessage } from './message-reconciliation.ts'
 import type { ToolExecution } from './tool-protocol.ts'
 import type { SubagentBridgeSnapshot } from './subagent-bridge.ts'
+import { urlForSession } from '../workspace/session-url.ts'
 import {
   projectSubagentMonitor,
   formatAgentTokens,
@@ -17,6 +18,7 @@ interface SubagentMonitorProps {
   messages: readonly JsonObject[]
   onError: (cause: unknown) => void
   onOpenAgentSession: (agentId: string) => Promise<void>
+  agentSessionIdForAgent: (agentId: string) => string | undefined
   toolExecutions: readonly ToolExecution[]
 }
 
@@ -27,6 +29,7 @@ export function SubagentMonitor({
   messages,
   onError,
   onOpenAgentSession,
+  agentSessionIdForAgent,
   toolExecutions,
 }: SubagentMonitorProps) {
   const hasRunningBridgeAgent = bridgeSnapshot?.agents.some(({ status }) => status === 'running')
@@ -66,6 +69,7 @@ export function SubagentMonitor({
                 onError={onError}
                 row={row}
                 onOpenAgentSession={onOpenAgentSession}
+                agentSessionIdForAgent={agentSessionIdForAgent}
               />
             ))}
         </div>
@@ -81,6 +85,7 @@ export function SubagentMonitor({
                 onError={onError}
                 row={row}
                 onOpenAgentSession={onOpenAgentSession}
+                agentSessionIdForAgent={agentSessionIdForAgent}
               />
             ))}
           </div>
@@ -108,11 +113,13 @@ function SubagentRow({
   compact = false,
   onError,
   onOpenAgentSession,
+  agentSessionIdForAgent,
   row,
 }: {
   compact?: boolean
   onError: (cause: unknown) => void
   onOpenAgentSession: (agentId: string) => Promise<void>
+  agentSessionIdForAgent: (agentId: string) => string | undefined
   row: SubagentMonitorRow
 }) {
   const typeLabel = row.subagentType ? ` (${row.subagentType})` : ''
@@ -126,18 +133,21 @@ function SubagentRow({
   const modelConfig = formatSubagentModelConfig(row)
   const tokenFact = row.tokens === undefined ? undefined : formatAgentTokens(row.tokens)
   return (
-    <button
+    <a
+      aria-disabled={!canOpen || undefined}
       aria-label={interactionLabel}
       className={`subagent-row${compact ? ' compact' : ''}`}
-      disabled={!canOpen}
-      onClick={() => {
+      href={canOpen
+        ? urlForSession(agentSessionIdForAgent(row.agentId) ?? row.childSessionId ?? row.agentId)
+        : undefined}
+      onClick={(event) => {
+        event.preventDefault()
         if (!canOpen) return
         void onOpenAgentSession(row.agentId).catch(onError)
       }}
       title={provisional
         ? interactionLabel
         : `${running ? 'Open live conversation' : 'Open transcript'} for ${title}${typeLabel}`}
-      type='button'
     >
       <span
         aria-label={row.status ?? 'Status unavailable'}
@@ -182,6 +192,6 @@ function SubagentRow({
           </span>
         )}
       </div>
-    </button>
+    </a>
   )
 }

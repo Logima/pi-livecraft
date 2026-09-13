@@ -3,6 +3,7 @@ import { resolveFileIcon } from '../../../shared/file-icon.ts'
 import { isObject } from '../../../shared/is-object.ts'
 import type { JsonObject } from '../../../shared/types.ts'
 import { Tooltip } from '../../components/Tooltip.tsx'
+import { urlForSession } from '../workspace/session-url.ts'
 import { CopyButton } from './CopyButton.tsx'
 import { canHighlightFile } from './file-preview.ts'
 import { formatDuration } from './message-usage.ts'
@@ -42,6 +43,7 @@ interface ToolCallCardProps {
   onError: (cause: unknown) => void
   onKill: () => Promise<JsonObject>
   onOpenAgentSession: (agentId: string) => Promise<void>
+  agentSessionIdForAgent: (agentId: string) => string | undefined
   repositoryRoot?: string | null
   partialResultContent?: unknown
   resultContent?: unknown
@@ -68,6 +70,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   onError,
   onKill,
   onOpenAgentSession,
+  agentSessionIdForAgent,
   partialResultContent,
   repositoryRoot,
   resultContent,
@@ -293,18 +296,22 @@ export const ToolCallCard = memo(function ToolCallCard({
         )}
         {agentId && (
           <Tooltip label='Open delegated agent session'>
-            <button
+            <a
+              aria-disabled={openingAgentSession || undefined}
               aria-label='Open delegated agent session'
               className='agent-session-link'
-              disabled={openingAgentSession}
-              onClick={() => void openAgentSession()}
-              type='button'
+              href={urlForSession(agentSessionIdForAgent(agentId) ?? agentId)}
+              onClick={(event) => {
+                event.preventDefault()
+                if (openingAgentSession) return
+                void openAgentSession()
+              }}
             >
               <span>{openingAgentSession ? 'Opening…' : 'Open'}</span>
               <svg aria-hidden='true' fill='none' viewBox='0 0 16 16'>
                 <path d='M5 3h8v8M13 3 4 12' />
               </svg>
-            </button>
+            </a>
           </Tooltip>
         )}
       </div>

@@ -58,6 +58,7 @@ export const Conversation = memo(function Conversation(
     onError,
     onFork,
     onOpenAgentSession,
+    agentSessionIdForAgent,
   }: {
     activity: Activity | null
     agentName?: string
@@ -76,6 +77,7 @@ export const Conversation = memo(function Conversation(
     onError: (cause: unknown) => void
     onFork: (entryId: string) => Promise<boolean>
     onOpenAgentSession: (agentId: string) => Promise<void>
+    agentSessionIdForAgent: (agentId: string) => string | undefined
   },
 ) {
   const showToolCalls = conversationView !== 'simple'
@@ -410,6 +412,7 @@ export const Conversation = memo(function Conversation(
                       onKill={() => onKillTool(call.id)}
                       onError={onError}
                       onOpenAgentSession={onOpenAgentSession}
+                      agentSessionIdForAgent={agentSessionIdForAgent}
                       partialResultContent={execution?.partialResult?.content}
                       repositoryRoot={repositoryRoot}
                       resultContent={result?.content}
@@ -476,6 +479,7 @@ export const Conversation = memo(function Conversation(
                     onKill={() => onKillTool(part.call.id)}
                     onError={onError}
                     onOpenAgentSession={onOpenAgentSession}
+                    agentSessionIdForAgent={agentSessionIdForAgent}
                     partialResultContent={execution?.partialResult?.content}
                     repositoryRoot={repositoryRoot}
                     resultContent={result?.content}
@@ -511,6 +515,7 @@ export const Conversation = memo(function Conversation(
               onKill={() => onKillTool(execution.id)}
               onError={onError}
               onOpenAgentSession={onOpenAgentSession}
+              agentSessionIdForAgent={agentSessionIdForAgent}
               partialResultContent={execution.partialResult?.content}
               repositoryRoot={repositoryRoot}
               resultContent={execution.result?.content}

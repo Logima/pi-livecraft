@@ -146,13 +146,14 @@
   background: var(--accent-soft);
   color: var(--accent);
   font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
+  text-decoration: none;
   transition:
     background 180ms ease,
     border-color 180ms ease,
     color 180ms ease,
     transform 180ms ease;
 }
-.agent-session-link:hover:not(:disabled) {
+.agent-session-link:hover:not([aria-disabled="true"]) {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   color: var(--accent-hover);
@@ -161,10 +162,10 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-.agent-session-link:active:not(:disabled) {
+.agent-session-link:active:not([aria-disabled="true"]) {
   transform: scale(0.97);
 }
-.agent-session-link:disabled {
+.agent-session-link[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.5;
   transform: none;

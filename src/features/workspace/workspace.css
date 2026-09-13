@@ -598,13 +598,14 @@
   background: transparent;
   color: inherit;
   text-align: left;
+  text-decoration: none;
   transition:
     background 180ms ease,
     border-color 180ms ease,
     box-shadow 180ms ease,
     transform 180ms ease;
 }
-.session-item:hover:not(:disabled) {
+.session-item:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .session-item:focus-visible {
@@ -614,7 +615,8 @@
 .session-item:active:not(:disabled) {
   transform: scale(0.97);
 }
-.session-item:disabled {
+.session-item:disabled,
+.session-item[aria-disabled="true"] {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;

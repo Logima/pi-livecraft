@@ -76,6 +76,14 @@ export function useWorkspaceSessions(
   const completedSessionIdsRef = useRef(completedSessionIds)
   const selectedIdRef = useRef(selectedId)
   const creatingSessionRef = useRef(false)
+  const selectSession = useCallback((sessionId: string): void => {
+    if (sessionId === selectedIdRef.current) return
+    const nextUrl = urlForSession(sessionId)
+    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.pushState(null, '', nextUrl)
+    }
+    setSelectedId(sessionId)
+  }, [])
   const refreshVersionRef = useRef(0)
   const autoSelectOnRefreshRef = useRef(true)
   sessionsRef.current = sessions
@@ -105,10 +113,6 @@ export function useWorkspaceSessions(
       writeLastSessionForWorkspace(workspacePath, selectedId)
     } else {
       window.localStorage.removeItem('pi-livecraft.selected-session')
-    }
-    const nextUrl = urlForSession(selectedId)
-    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
-      window.history.replaceState(null, '', nextUrl)
     }
     const markSelectedRead = () => {
       if (document.visibilityState !== 'visible') return
@@ -239,11 +243,11 @@ export function useWorkspaceSessions(
     setRecentWorkspacePaths(nextRecentWorkspacePaths)
     onWorkspaceSelected()
     setWorkspacePath(path)
-    setSelectedId(rememberedSessionId)
+    selectSession(rememberedSessionId)
     setDirectoryPickerOpen(false)
     autoSelectOnRefreshRef.current = targetSessionId === undefined
     void refreshSessions(path)
-  }, [onWorkspaceSelected, recentWorkspacePaths, refreshSessions, workspacePath])
+  }, [onWorkspaceSelected, recentWorkspacePaths, refreshSessions, selectSession, workspacePath])
 
   const updatePinnedSessionName = useCallback((sessionPath: string, name: string): void => {
     setPinnedSessions((current) => {
@@ -319,7 +323,7 @@ export function useWorkspaceSessions(
           ])
         }
         await refreshSessions(options.refreshCwd)
-        setSelectedId(session.id)
+        selectSession(session.id)
         if (options.draftMessage) onDraftMessage(session.id, options.draftMessage)
         if (options.initialMessage) {
           await sendPiCommand(session.id, { type: 'prompt', message: options.initialMessage })
@@ -336,7 +340,14 @@ export function useWorkspaceSessions(
         setCreatingSession(false)
       }
     },
-    [nameSessionFromFirstPrompt, onDraftMessage, onError, onInitialMessageSent, refreshSessions],
+    [
+      nameSessionFromFirstPrompt,
+      onDraftMessage,
+      onError,
+      onInitialMessageSent,
+      refreshSessions,
+      selectSession,
+    ],
   )
 
   const updateSession = useCallback(
@@ -491,6 +502,7 @@ export function useWorkspaceSessions(
     sessions,
     unsentSessionIds,
     setDirectoryPickerOpen,
+    selectSession,
     setSelectedId,
     selectWorkspace,
     startAndSelectSession,

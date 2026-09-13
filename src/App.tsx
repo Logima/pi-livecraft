@@ -350,12 +350,12 @@ function App() {
     renameManagedSession,
     renameSession,
     selectCreatedSession,
+    selectSession,
     selectedId,
     sentSessions,
     sessions,
     setDirectoryPickerOpen,
     unsentSessionIds,
-    setSelectedId,
     selectWorkspace,
     startAndSelectSession: startWorkspaceSession,
     togglePinnedSession,
@@ -388,11 +388,11 @@ function App() {
       && !window.localStorage.getItem(`pi-livecraft.composer-draft.${session.id}`)?.trim()
     )
     if (reusableSession) {
-      setSelectedId(reusableSession.id)
+      selectSession(reusableSession.id)
       return
     }
     await startAndSelectSession(() => createSession(workspacePath))
-  }, [sessions, setSelectedId, startAndSelectSession, unsentSessionIds, workspacePath])
+  }, [selectSession, sessions, startAndSelectSession, unsentSessionIds, workspacePath])
 
   const openPinnedSession = useCallback(
     async (session: PinnedSession): Promise<void> => {
@@ -415,6 +415,16 @@ function App() {
     : undefined
 
   /** Opens an Agent transcript, attaching the parent relay while its bridge row is running. */
+  const agentSessionIdForAgent = useCallback((agentId: string): string | undefined => {
+    const parentPath = sessions.find((session) => session.id === selectedId)?.sessionPath
+    const related = parentPath
+      ? relatedAgentSession(recentSessions, parentPath, agentId)
+      : undefined
+    return related
+      ? sessions.find((session) => session.sessionPath === related.sessionPath)?.id ?? related.id
+      : undefined
+  }, [recentSessions, selectedId, sessions])
+
   const openAgentSession = useCallback(async (agentId: string): Promise<void> => {
     const parent = sessions.find((session) => session.id === selectedId)
     const parentPath = parent?.sessionPath
@@ -436,7 +446,7 @@ function App() {
       && existing.subagentRelation.agentId === relation.agentId
       && existing.subagentRelation.childSessionId === relation.childSessionId
     ) {
-      setSelectedId(existing.id)
+      selectSession(existing.id)
       return
     }
     const reusable = existing?.status === 'idle'
@@ -454,7 +464,7 @@ function App() {
     selectedId,
     selectedParentBridgeSnapshot,
     sessions,
-    setSelectedId,
+    selectSession,
     startAndSelectSession,
     workspacePath,
   ])
@@ -1044,7 +1054,7 @@ function App() {
   const openQuestionnaireSession = questionnaireSession && questionnaireSession.id !== selectedId
     ? () =>
       questionnaireSession.cwd === workspacePath
-        ? setSelectedId(questionnaireSession.id)
+        ? selectSession(questionnaireSession.id)
         : selectWorkspace(questionnaireSession.cwd, questionnaireSession.id)
     : undefined
 
@@ -1127,7 +1137,7 @@ function App() {
       const visible = sidebarSessions(recentSessions, workspacePath, sentSessions)
       const currentIndex = visible.findIndex((session) => session.id === selectedId)
       const targetIndex = id === 'next-session' ? currentIndex + 1 : currentIndex - 1
-      if (targetIndex >= 0 && targetIndex < visible.length) setSelectedId(visible[targetIndex].id)
+      if (targetIndex >= 0 && targetIndex < visible.length) selectSession(visible[targetIndex].id)
       return
     }
     if (id === 'toggle-conversation-view') {
@@ -1152,7 +1162,6 @@ function App() {
     sentSessions,
     analysisAvailable,
     setDirectoryPickerOpen,
-    setSelectedId,
     showToast,
     snapshot.messages,
     createNewSession,
@@ -1322,7 +1331,7 @@ function App() {
         }}
         onOpenOtherWorkspaceSession={openPinnedSession}
         onSelectOtherWorkspaceSession={(session) => selectWorkspace(session.cwd, session.id)}
-        onSelectSession={setSelectedId}
+        onSelectSession={selectSession}
         onError={(cause) => showToast('error', messageOf(cause))}
         onOpenSettings={() => setSettingsOpen(true)}
         onRenameSession={renameManagedSession}
@@ -1358,6 +1367,7 @@ function App() {
                     onError={handleConversationError}
                     onFork={handleForkConversation}
                     onOpenAgentSession={openAgentSession}
+                    agentSessionIdForAgent={agentSessionIdForAgent}
                     pendingSteering={pendingSteering}
                     repositoryRoot={gitSnapshot?.root}
                     scrollToBottomRequest={scrollToBottomRequest}
@@ -1435,6 +1445,7 @@ function App() {
                       messages={snapshot.messages}
                       onError={handleConversationError}
                       onOpenAgentSession={openAgentSession}
+                      agentSessionIdForAgent={agentSessionIdForAgent}
                       toolExecutions={toolExecutions}
                     />
                     <Composer
@@ -1552,7 +1563,7 @@ function App() {
         onTodoNavigateSession={(link) => {
           const active = sessions.find((s) => s.id === link.id)
           if (active) {
-            setSelectedId(link.id)
+            selectSession(link.id)
           } else {
             void startAndSelectSession(() => openSession(workspacePath, link.sessionPath))
           }
