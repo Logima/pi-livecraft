@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   activityForPiEvent,
   activityText,
+  piStateIsIdle,
   sessionActivity,
 } from '../src/features/conversation/activity.ts'
 
@@ -101,6 +102,14 @@ test('restores reliable activity from connection and session status', () => {
   assert.deepEqual(sessionActivity(null, 'idle', 'connecting'), { kind: 'connecting' })
   assert.equal(sessionActivity(null, 'idle', 'connected'), null)
   assert.deepEqual(sessionActivity(null, 'running', 'connected'), { kind: 'working' })
+  assert.equal(
+    sessionActivity({ kind: 'working' }, 'running', 'connected', {
+      isStreaming: false,
+      isCompacting: false,
+      pendingMessageCount: 0,
+    }),
+    null,
+  )
   assert.deepEqual(sessionActivity({ kind: 'writing' }, 'running', 'disconnected'), {
     kind: 'disconnected',
   })
@@ -108,6 +117,26 @@ test('restores reliable activity from connection and session status', () => {
   assert.deepEqual(sessionActivity({ kind: 'compacting' }, 'idle', 'connected'), {
     kind: 'compacting',
   })
+})
+
+test('recognizes an ended Pi state even when the session summary is stale', () => {
+  assert.equal(
+    piStateIsIdle({
+      isStreaming: false,
+      isCompacting: false,
+      pendingMessageCount: 0,
+    }),
+    true,
+  )
+  assert.equal(
+    piStateIsIdle({
+      isStreaming: true,
+      isCompacting: false,
+      pendingMessageCount: 0,
+    }),
+    false,
+  )
+  assert.equal(piStateIsIdle(null), false)
 })
 
 test('uses playful activity labels', () => {

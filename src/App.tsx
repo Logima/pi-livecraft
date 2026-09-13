@@ -33,7 +33,11 @@ import type {
 import { isObject } from '../shared/is-object.ts'
 import { Composer } from './features/composer/Composer.tsx'
 import { ToastStack, type Toast } from './features/notifications/ToastStack.tsx'
-import { sessionActivity, type PiConnection } from './features/conversation/activity.ts'
+import {
+  piStateIsIdle,
+  sessionActivity,
+  type PiConnection,
+} from './features/conversation/activity.ts'
 import { Conversation } from './features/conversation/Conversation.tsx'
 import { conversationMessageEntries } from './features/conversation/message-reconciliation.ts'
 import { messageUsage } from './features/conversation/message-usage.ts'
@@ -909,8 +913,28 @@ function App() {
   const displayedActivity = selectedSession?.id && compactingSessionIds.has(selectedSession.id)
     ? { kind: 'compacting' as const }
     : selectedSession
-    ? sessionActivity(activity, selectedSession.status, piConnection)
+    ? sessionActivity(
+      activity,
+      selectedSession.status,
+      piConnection,
+      selectedRelayRunning ? null : snapshot.state,
+    )
     : null
+
+  useEffect(() => {
+    if (
+      !selectedSessionId || snapshotSessionId !== selectedSessionId || selectedRelayRunning
+      || !piStateIsIdle(snapshot.state)
+    ) return
+    if (selectedSession?.status === 'running') updateSession(selectedSessionId, { status: 'idle' })
+  }, [
+    selectedRelayRunning,
+    selectedSession?.status,
+    selectedSessionId,
+    snapshot.state,
+    snapshotSessionId,
+    updateSession,
+  ])
 
   // Composer and session lifecycle
   const handleConversationError = useCallback(
@@ -1037,8 +1061,10 @@ function App() {
       const message = liveById.get(entry.key) ?? entry.message
       if (message.role !== 'assistant' || entry.source !== 'live') return [message]
       const usage = messageUsage(message)
-      if (!usage || usage.cacheMiss !== 0 || usage.cacheRead !== 0 || usage.cacheWrite !== 0
-        || usage.output !== 0 || usage.cost !== 0) return [message]
+      if (
+        !usage || usage.cacheMiss !== 0 || usage.cacheRead !== 0 || usage.cacheWrite !== 0
+        || usage.output !== 0 || usage.cost !== 0
+      ) return [message]
       const { usage: _usage, ...withoutUsage } = message
       return [withoutUsage]
     })

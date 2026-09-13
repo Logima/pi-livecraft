@@ -53,11 +53,20 @@ export function activityForPiEvent(current: Activity | null, event: JsonObject):
   return current
 }
 
+/** Reports whether Pi's state proves that no work is active. */
+export function piStateIsIdle(state: JsonObject | null): boolean {
+  return state !== null
+    && state.isStreaming === false
+    && state.isCompacting === false
+    && state.pendingMessageCount === 0
+}
+
 /** Reconciles live activity with the manager and process states available after a page reload. */
 export function sessionActivity(
   current: Activity | null,
   status: SessionSummary['status'],
   connection: PiConnection,
+  state: JsonObject | null = null,
 ): Activity | null {
   if (connection === 'connecting') return { kind: 'connecting' }
   if (connection === 'disconnected') return { kind: 'disconnected' }
@@ -67,6 +76,7 @@ export function sessionActivity(
     if (current?.kind === 'compacting') return current
     return null
   }
+  if (piStateIsIdle(state)) return null
   return current ?? { kind: 'working' }
 }
 
