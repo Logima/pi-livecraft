@@ -248,7 +248,13 @@ export function projectSubagentMonitor(
       rows,
       agent,
       now,
-      promoteProvisionalRow(rows, provisionalRows, agent, bridgeAgentIds),
+      promoteProvisionalRow(
+        rows,
+        provisionalRows,
+        agent,
+        bridgeAgentIds,
+        bridgeAgents.filter(({ status }) => status === 'running').length,
+      ),
     )
   }
 
@@ -350,14 +356,28 @@ function promoteProvisionalRow(
   provisionalIds: readonly string[],
   bridgeAgent: SubagentBridgeAgent,
   bridgeAgentIds: ReadonlyMap<string, string>,
+  runningBridgeAgentCount: number,
 ): string | undefined {
   const toolCallId = bridgeAgent.toolCallId
     ?? [...bridgeAgentIds.entries()].find(([, agentId]) => agentId === bridgeAgent.agentId)?.[0]
-  if (toolCallId === undefined) return undefined
-  const provisionalId = provisionalAgentId(toolCallId)
-  return provisionalIds.includes(provisionalId) && rows.has(provisionalId)
-    ? provisionalId
-    : undefined
+  if (toolCallId !== undefined) {
+    const provisionalId = provisionalAgentId(toolCallId)
+    return provisionalIds.includes(provisionalId) && rows.has(provisionalId)
+      ? provisionalId
+      : undefined
+  }
+  if (runningBridgeAgentCount !== 1 || provisionalIds.length !== 1) return undefined
+  const [provisionalId] = provisionalIds
+  const provisional = provisionalId ? rows.get(provisionalId) : undefined
+  return provisional && !hasIdentityHints(provisional) ? provisionalId : undefined
+}
+
+function hasIdentityHints(row: SubagentMonitorRow): boolean {
+  return row.description !== undefined
+    || row.subagentType !== undefined
+    || row.model !== undefined
+    || row.thinking !== undefined
+    || row.effort !== undefined
 }
 
 function withoutProvisional(row: SubagentMonitorRow, agentId: string): SubagentMonitorRow {

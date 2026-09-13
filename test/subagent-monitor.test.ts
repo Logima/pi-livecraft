@@ -517,6 +517,32 @@ test('shows a stable non-navigable provisional row for a foreground Agent call',
   }])
 })
 
+test('promotes an empty provisional row when it is the only running agent', () => {
+  const view = projectSubagentMonitor([], [{
+    id: 'call-foreground',
+    name: 'Agent',
+    args: {},
+    status: 'running',
+  }], {
+    schemaVersion: 1,
+    agents: [{
+      agentId: 'agent-real',
+      childSessionId: 'child-real',
+      type: 'general-purpose',
+      description: 'Inspect the build',
+      status: 'running',
+      startedAt: 100,
+      toolUses: 2,
+      turnCount: 1,
+      tokens: { input: 3, output: 4, cacheWrite: 0 },
+    }],
+  })
+
+  assert.deepEqual(view.active.map(({ agentId }) => agentId), ['agent-real'])
+  assert.equal(view.active[0]?.provisional, undefined)
+  assert.equal(view.active[0]?.childSessionId, 'child-real')
+})
+
 test('promotes the provisional row by exact toolCallId', () => {
   const view = projectSubagentMonitor([], [{
     id: 'call-foreground',
