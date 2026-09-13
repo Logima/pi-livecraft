@@ -73,6 +73,17 @@ test('keeps a sent session visible when persistence temporarily omits it', () =>
   assert.deepEqual(sidebarSessions([], '/workspace', [persisted]), [persisted])
 })
 
+test('excludes subagent sessions even when metadata is unavailable', () => {
+  const subagent = {
+    ...persisted,
+    name: 'common-agent#abcdf',
+    sessionPath: '/sessions/subagent-fallback.jsonl',
+    parentSessionPath: persisted.sessionPath,
+  }
+
+  assert.deepEqual(sidebarSessions([subagent], '/workspace'), [])
+})
+
 test('excludes subagent sessions but keeps other child sessions', () => {
   const subagent = {
     ...persisted,
@@ -173,6 +184,18 @@ test('keeps a child with an unavailable parent visible as a root session', () =>
   assert.deepEqual(sidebarSessionTree([child], '/workspace'), [
     { session: child, children: [] },
   ])
+})
+
+test('does not expand parent branches for a subagent child', () => {
+  const parent = { ...persisted, sessionPath: '/sessions/parent.jsonl' }
+  const child = {
+    ...persisted,
+    name: 'common-agent#abcdf',
+    sessionPath: '/sessions/child.jsonl',
+    parentSessionPath: parent.sessionPath,
+  }
+
+  assert.deepEqual(relatedParentSessionPaths([parent, child], child.sessionPath), [])
 })
 
 test('lists the parent branches needed to reveal a selected child', () => {

@@ -50,6 +50,14 @@ export function workspaceSessionCounts(
 
 export type PinnedSession = Pick<RecentSession, 'cwd' | 'name' | 'sessionPath'>
 
+/** Recognizes persisted Agent children even when their metadata is unavailable. */
+export function isSubagentRecentSession(
+  session: Pick<RecentSession, 'agentStatus' | 'name' | 'parentSessionPath'>,
+): boolean {
+  return session.agentStatus !== undefined
+    || (session.parentSessionPath !== undefined && /#[0-9a-f]{5,7}$/i.test(session.name))
+}
+
 /** Returns the final directory component for POSIX, home, and Windows-style paths. */
 export function workspaceBasename(path: string): string {
   const trimmed = path.trim()
@@ -143,7 +151,7 @@ export function sidebarSessions(
     !recentIds.has(session.id) && !recentPaths.has(session.sessionPath)
   )
   return [...pending, ...recentSessions]
-    .filter(({ cwd, agentStatus }) => cwd === workspacePath && agentStatus === undefined)
+    .filter(({ cwd, ...session }) => cwd === workspacePath && !isSubagentRecentSession(session))
     .sort((left, right) => right.updatedAt - left.updatedAt)
 }
 
@@ -205,9 +213,11 @@ export function relatedParentSessionPaths(
   selectedSessionPath: string,
 ): string[] {
   const byPath = new Map(sessions.map((session) => [session.sessionPath, session]))
+  const selected = byPath.get(selectedSessionPath)
+  if (selected && isSubagentRecentSession(selected)) return []
   const parentPaths: string[] = []
   const visited = new Set<string>()
-  let parentPath = byPath.get(selectedSessionPath)?.parentSessionPath
+  let parentPath = selected?.parentSessionPath
   while (parentPath && !visited.has(parentPath)) {
     visited.add(parentPath)
     parentPaths.push(parentPath)
