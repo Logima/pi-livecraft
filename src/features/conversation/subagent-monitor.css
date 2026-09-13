@@ -82,6 +82,7 @@
 .subagent-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) minmax(0, auto);
+  column-gap: 8px;
   grid-template-areas: "status copy facts";
   align-items: center;
   width: 100%;
