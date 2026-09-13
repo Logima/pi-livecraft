@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
+import { startTransition, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { getSnapshot } from '../../api.ts'
 import {
   assistantMessageAfterEvent,
@@ -64,6 +64,7 @@ export function useConversationRuntime(
   const snapshotSessionIdRef = useRef('')
   const snapshotRefreshVersionRef = useRef(0)
   const snapshotRefreshRef = useRef<SnapshotRefreshRequest | undefined>(undefined)
+  const snapshotCacheRef = useRef(new Map<string, SessionSnapshot>())
   const appliedPiEventSequenceRef = useRef(0)
   const toolStartedAtRef = useRef(new Map<string, number>())
   const requestStartedAtRef = useRef<number | undefined>(undefined)
@@ -145,6 +146,7 @@ export function useConversationRuntime(
         const version = ++snapshotRefreshVersionRef.current
         try {
           nextSnapshot = await getSnapshot(sessionId)
+          snapshotCacheRef.current.set(sessionId, nextSnapshot)
           if (request.cancelled) return nextSnapshot
           if (version !== snapshotRefreshVersionRef.current || sessionId !== selectedIdRef.current)
             return nextSnapshot
@@ -207,10 +209,12 @@ export function useConversationRuntime(
         const startedAt = requestStartedAtRef.current
         const output = outputTokensInAgentEnd(event)
         if (startedAt !== undefined && output > 0) {
-          setObservedResponseSpeeds((current) => new Map(current).set(
-            sessionId,
-            output / ((performance.now() - startedAt) / 1000),
-          ))
+          setObservedResponseSpeeds((current) =>
+            new Map(current).set(
+              sessionId,
+              output / ((performance.now() - startedAt) / 1000),
+            )
+          )
         }
       }
       const streamedToolCall = toolCallInUpdate(event)
@@ -315,12 +319,13 @@ export function useConversationRuntime(
     [flushLiveUpdates, queueLiveMessage, refreshSnapshot],
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     clearLiveMessages()
     appliedPiEventSequenceRef.current = 0
-    snapshotSessionIdRef.current = ''
-    setSnapshot(emptySnapshot)
-    setSnapshotSessionId('')
+    const cachedSnapshot = snapshotCacheRef.current.get(selectedId)
+    snapshotSessionIdRef.current = cachedSnapshot ? selectedId : ''
+    setSnapshot(cachedSnapshot ?? emptySnapshot)
+    setSnapshotSessionId(cachedSnapshot ? selectedId : '')
     setPendingSteering([])
     queueUpdateVersionRef.current += 1
     setActivity(null)

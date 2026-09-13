@@ -885,6 +885,7 @@ function App() {
     && selectedSession.subagentRelation !== undefined
   const selectedSessionStatus = selectedSession?.status
   const sessionIsLoading = Boolean(selectedSessionId && snapshotSessionId !== selectedSessionId)
+  const showSessionLoading = loadingPhase !== 'hidden' && sessionIsLoading
 
   // Manages loading overlay fade-in / fade-out around snapshot refresh.
   useEffect(() => {
@@ -1485,7 +1486,7 @@ function App() {
                   </div>
                 </>
               )}
-              {loadingPhase !== 'hidden' && (
+              {showSessionLoading && (
                 <>
                   <section
                     aria-busy={loadingPhase !== 'exiting' ? true : undefined}
