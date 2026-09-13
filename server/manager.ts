@@ -34,8 +34,8 @@ const idleReuseAfterMs = readDuration('PI_LIVECRAFT_IDLE_REUSE_AFTER_MS', 3 * 60
 const clients = new Set<Socket>()
 const sessions = new Map<string, ManagedSession>()
 const openingSessions = new Map<string, Promise<SessionSummary>>()
-const maxRelayBufferEvents = 64
-const maxRelayBufferBytes = 96_000
+const maxRelayBufferEvents = 10_000
+const maxRelayBufferBytes = 5_000_000
 const maxRelayIdentifierLength = 200
 const maxBridgeStringLength = 240
 const maxBridgeAgents = 100
@@ -110,6 +110,7 @@ interface RelayState {
 const server = createServer((socket) => {
   clients.add(socket)
   socket.setNoDelay(true)
+  replayRelayHistory(socket)
   const decoder = new JsonLineDecoder((value) => void handleRequest(socket, value))
   socket.on('data', (chunk) => {
     try {
@@ -744,33 +745,26 @@ function handleSubagentRelayStatus(session: ManagedSession, event: JsonObject): 
   if (envelope.sequence <= state.lastSequence) return
   state.lastSequence = envelope.sequence
   const child = relatedRelayChild(session, envelope.agentId, envelope.childSessionId)
-  if (envelope.event.type === 'agent_start' || envelope.event.type === 'turn_start') {
+  if (envelope.event.type === 'agent_start' || envelope.event.type === 'turn_start')
     state.inProgress = true
-    state.bufferedEvents = []
-    state.bufferedBytes = 0
-  }
-  if (child) {
-    handlePiEvent(child, envelope.event)
-  } else if (state.inProgress) {
-    const eventBytes = jsonByteLength(envelope.event)
-    if (eventBytes <= maxRelayBufferBytes) {
-      while (
-        state.bufferedEvents.length >= maxRelayBufferEvents
-        || state.bufferedBytes + eventBytes > maxRelayBufferBytes
-      ) {
-        const removed = state.bufferedEvents.shift()
-        if (!removed) break
-        state.bufferedBytes -= jsonByteLength(removed)
-      }
-      state.bufferedEvents.push(envelope.event)
-      state.bufferedBytes += eventBytes
+
+  // Keep a bounded relay history even while the child is open. The child Pi process does not
+  // receive these events itself, so reopening it must be able to rebuild prior streamed turns.
+  const eventBytes = jsonByteLength(envelope.event)
+  if (eventBytes <= maxRelayBufferBytes) {
+    while (
+      state.bufferedEvents.length >= maxRelayBufferEvents
+      || state.bufferedBytes + eventBytes > maxRelayBufferBytes
+    ) {
+      const removed = state.bufferedEvents.shift()
+      if (!removed) break
+      state.bufferedBytes -= jsonByteLength(removed)
     }
+    state.bufferedEvents.push(envelope.event)
+    state.bufferedBytes += eventBytes
   }
-  if (envelope.event.type === 'turn_end') {
-    state.inProgress = false
-    state.bufferedEvents = []
-    state.bufferedBytes = 0
-  }
+  if (child) handlePiEvent(child, envelope.event)
+  if (envelope.event.type === 'turn_end') state.inProgress = false
 }
 
 function replayRelayBuffer(
@@ -780,10 +774,7 @@ function replayRelayBuffer(
 ): void {
   const state = parent.relayStates.get(relation.agentId)
   if (!state || state.childSessionId !== relation.childSessionId) return
-  const buffered = state.bufferedEvents
-  state.bufferedEvents = []
-  state.bufferedBytes = 0
-  for (const event of buffered) handlePiEvent(child, event)
+  for (const event of state.bufferedEvents) handlePiEvent(child, event)
 }
 
 function relatedRelayChild(
@@ -818,13 +809,14 @@ function reconcileRelayChildren(
       || agent.childSessionId !== relation.childSessionId
     ) {
       settleRelayChild(child)
-      parent.relayStates.delete(relation.agentId)
     }
   }
   for (const [agentId, state] of parent.relayStates) {
     const agent = current.agents.find(({ agentId: currentAgentId }) => currentAgentId === agentId)
-    if (!agent || agent.status !== 'running' || agent.childSessionId !== state.childSessionId)
-      parent.relayStates.delete(agentId)
+    if (!agent || agent.status !== 'running' || agent.childSessionId !== state.childSessionId) {
+      // Keep the bounded transcript so reopening or reconnecting can restore the child view.
+      state.inProgress = false
+    }
   }
 }
 
@@ -1075,6 +1067,32 @@ function activeAgentFromStatus(statusText: unknown): string | undefined {
 function isBlockingUiRequest(event: JsonObject): boolean {
   return event.method === 'select' || event.method === 'confirm' || event.method === 'input'
     || event.method === 'editor'
+}
+
+/** Rehydrates a reconnecting backend with relay history retained by the manager. */
+function replayRelayHistory(socket: Socket): void {
+  for (const parent of sessions.values()) {
+    for (const [agentId, state] of parent.relayStates) {
+      const child = relatedRelayChild(parent, agentId, state.childSessionId)
+      if (!child) continue
+      const created: ManagerEvent = {
+        kind: 'event',
+        event: 'session_created',
+        sessionId: child.summary.id,
+        data: child.summary,
+      }
+      if (socket.writable) socket.write(encodeJsonLine(created))
+      for (const data of state.bufferedEvents) {
+        const event: ManagerEvent = {
+          kind: 'event',
+          event: 'pi',
+          sessionId: child.summary.id,
+          data,
+        }
+        if (socket.writable) socket.write(encodeJsonLine(event))
+      }
+    }
+  }
 }
 
 function broadcast(event: ManagerEvent): void {

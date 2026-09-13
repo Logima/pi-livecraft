@@ -14,10 +14,22 @@ export interface SequencedPiEvent {
 export class LiveSessionEvents {
   readonly #events = new Map<string, SequencedPiEvent>()
   #assistantMessage: JsonObject | null = null
-  readonly retainCompletedMessages: boolean
+  retainCompletedMessages: boolean
 
   constructor(retainCompletedMessages = false) {
     this.retainCompletedMessages = retainCompletedMessages
+  }
+
+  /** Enables durable replay semantics when a session is identified as a relay child. */
+  enableCompletedMessageRetention(): void {
+    this.retainCompletedMessages = true
+  }
+
+  /** Discards speculative relay history once the session is known to be normal. */
+  clearCompletedMessages(): void {
+    this.retainCompletedMessages = false
+    this.#events.clear()
+    this.#assistantMessage = null
   }
 
   receive(data: JsonObject, sequence: number): void {

@@ -56,16 +56,27 @@ const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
 
 manager.on('event', (event: ManagerEvent) => {
   quotas.receiveManagerEvent(event)
-  if (event.event === 'session_exited') liveSessionEvents.delete(event.sessionId)
+  if (event.event === 'session_created') {
+    const relay = isRelaySessionEvent(event)
+    const live = liveSessionEvents.get(event.sessionId)
+    if (live) {
+      if (relay) live.enableCompletedMessageRetention()
+      else live.clearCompletedMessages()
+    } else liveSessionEvents.set(event.sessionId, new LiveSessionEvents(relay))
+  }
+  if (event.event === 'session_exited') {
+    const live = liveSessionEvents.get(event.sessionId)
+    if (!live?.retainCompletedMessages) liveSessionEvents.delete(event.sessionId)
+  }
   if (event.event === 'session_reassigned') {
     const live = liveSessionEvents.get(event.sessionId)
     if (!live?.retainCompletedMessages) liveSessionEvents.delete(event.sessionId)
   }
   if (event.event === 'pi' && isObject(event.data)) {
     const sequence = ++piEventSequence
-    const live = liveSessionEvents.get(event.sessionId) ?? new LiveSessionEvents(
-      isRelaySessionEvent(event),
-    )
+    // Events can precede session_created during relay-session startup; retain them until
+    // the manager identifies whether this is a relay child or a normal session.
+    const live = liveSessionEvents.get(event.sessionId) ?? new LiveSessionEvents(true)
     liveSessionEvents.set(event.sessionId, live)
     live.receive(event.data, sequence)
     broadcast({ ...event, sequence })

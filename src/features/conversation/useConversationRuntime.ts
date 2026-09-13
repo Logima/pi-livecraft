@@ -161,6 +161,8 @@ export function useConversationRuntime(
           snapshotSessionIdRef.current = sessionId
           setSnapshot(nextSnapshot)
           setSnapshotSessionId(sessionId)
+          // Replay uses this anchor synchronously before React can render the new snapshot.
+          historyLengthRef.current = nextSnapshot.messages.length
           const latestLiveSequence = nextSnapshot.liveEvents.at(-1)?.sequence ?? 0
           if (latestLiveSequence > appliedPiEventSequenceRef.current) {
             clearLiveMessages()
