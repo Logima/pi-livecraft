@@ -82,14 +82,13 @@ export function bridgeAgentsByToolCallId(
   return resolved
 }
 
-/** Selects the bounded activity label for an Agent card with a correlated running bridge row. */
+/** Selects the activity label for an Agent card with a correlated running bridge row. */
 export function agentPendingStatus(
   bridgeAgentId: string | undefined,
   latestActivity?: string,
 ): string | undefined {
   if (bridgeAgentId === undefined) return undefined
-  const activity = latestActivity?.trim()
-  return activity || 'Running…'
+  return latestActivity?.trim() || undefined
 }
 
 /** Prefers the persisted result identity and falls back to the correlated bridge identity. */

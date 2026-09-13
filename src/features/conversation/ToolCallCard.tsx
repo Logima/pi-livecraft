@@ -160,6 +160,8 @@ export const ToolCallCard = memo(function ToolCallCard({
   const pendingAgentLabel = pending && agentStatus === 'running'
     ? agentPendingStatus(bridgeAgentId, bridgeLatestActivity)
     : undefined
+  const hasAuthoritativeRunningBridge = pending && agentStatus === 'running'
+    && bridgeAgentId !== undefined
 
   /** Force-kills the active tool's child process without aborting the Pi session. */
   const stopTool = async (): Promise<void> => {
@@ -278,7 +280,7 @@ export const ToolCallCard = memo(function ToolCallCard({
                 ? 'Generating…'
                 : partialOutput
                 ? <span aria-hidden='true'>↗ {partialOutputLength} car.</span>
-                : pendingAgentLabel ?? 'In progress…'}
+                : pendingAgentLabel ?? (hasAuthoritativeRunningBridge ? null : 'In progress…')}
               {active && (
                 <span
                   aria-label={streaming ? 'Arguments are being generated' : 'Tool in progress'}

@@ -67,10 +67,10 @@ test('passes exact bridge activity through to a pending Agent card', () => {
   assert.equal(agentPendingStatus(agent?.agentId, agent?.latestActivity), 'grep')
 })
 
-test('uses bridge activity or a specific running fallback for a pending Agent card', () => {
+test('uses bridge activity without duplicating the authoritative running badge', () => {
   assert.equal(agentPendingStatus('agent-live', 'grep'), 'grep')
-  assert.equal(agentPendingStatus('agent-live', ''), 'Running…')
-  assert.equal(agentPendingStatus('agent-live', '   '), 'Running…')
+  assert.equal(agentPendingStatus('agent-live', ''), undefined)
+  assert.equal(agentPendingStatus('agent-live', '   '), undefined)
   assert.equal(agentPendingStatus(undefined, 'grep'), undefined)
 })
 
