@@ -16,6 +16,7 @@ import { useTabStatus } from './useTabStatus.ts'
 import {
   nextActiveSessionId,
   pickSessionOnOpen,
+  isSubagentSession,
   sidebarSessions,
   type PinnedSession,
   type SessionActionTarget,
@@ -52,9 +53,13 @@ export function useWorkspaceSessions(
   const [completedSessionIds, setCompletedSessionIds] = useState<ReadonlySet<string>>(
     readCompletedSessionIds,
   )
+  const completedSubagentCount = sessions.filter(
+    (session) => isSubagentSession(session)
+      && completedSessionIds.has(session.sessionPath ?? session.id),
+  ).length
   useTabStatus(
-    sessions.filter((session) => session.status === 'running').length,
-    completedSessionIds.size,
+    sessions.filter((session) => session.status === 'running' && !isSubagentSession(session)).length,
+    completedSessionIds.size - completedSubagentCount,
   )
   const [pinnedSessions, setPinnedSessions] = useState<PinnedSession[]>(readPinnedSessions)
   const [isRefreshingSessions, setIsRefreshingSessions] = useState(true)

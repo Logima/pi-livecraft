@@ -28,9 +28,22 @@ test('shows persisted sessions from the current workspace', () => {
   assert.deepEqual(sidebarSessions([persisted], '/workspace'), [persisted])
 })
 
-test('counts running and unread sessions for a workspace', () => {
+test('counts running and unread sessions for a workspace without delegated agents', () => {
   const sessions: SessionSummary[] = [
     { id: 'running', cwd: '/workspace', name: 'Running', status: 'running', pendingUi: [] },
+    {
+      id: 'agent-running',
+      cwd: '/workspace',
+      name: 'Agent transcript',
+      sessionPath: '/sessions/agent.jsonl',
+      status: 'running',
+      pendingUi: [],
+      subagentRelation: {
+        parentManagerSessionId: 'running',
+        agentId: 'agent-id',
+        childSessionId: 'agent-child',
+      },
+    },
     {
       id: 'finished',
       cwd: '/workspace',
@@ -43,7 +56,11 @@ test('counts running and unread sessions for a workspace', () => {
   ]
 
   assert.deepEqual(
-    workspaceSessionCounts(sessions, '/workspace', new Set(['/sessions/finished.jsonl'])),
+    workspaceSessionCounts(
+      sessions,
+      '/workspace',
+      new Set(['/sessions/finished.jsonl', '/sessions/agent.jsonl']),
+    ),
     { running: 1, unread: 1 },
   )
 })
