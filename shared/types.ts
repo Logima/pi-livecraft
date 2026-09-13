@@ -15,6 +15,8 @@ export interface SessionSummary {
   activeAgent?: string
   subagentBridgeStatus?: string
   subagentRelation?: SubagentSessionRelation
+  /** Marks a managed transcript that belongs to a delegated Agent invocation. */
+  isSubagent?: boolean
   status: 'starting' | 'idle' | 'running' | 'exited'
   pendingUi: JsonObject[]
 }

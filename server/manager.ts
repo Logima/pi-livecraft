@@ -316,7 +316,7 @@ async function openSession(request: ManagerRequest): Promise<SessionSummary> {
       cwd,
       name,
       sessionPath,
-      ...(relation ? { subagentRelation: relation } : {}),
+      ...(relation ? { subagentRelation: relation, isSubagent: true } : {}),
       status: 'starting',
       pendingUi: [],
     }
@@ -1026,6 +1026,7 @@ function attachRelayRelation(child: ManagedSession, relation: SubagentSessionRel
   )
     throw new Error('Session is already observing another subagent')
   child.summary.subagentRelation = relation
+  child.summary.isSubagent = true
   const parent = sessions.get(relation.parentManagerSessionId)
   if (!parent) throw new Error('Parent session is unavailable')
   markSessionRunning(child)

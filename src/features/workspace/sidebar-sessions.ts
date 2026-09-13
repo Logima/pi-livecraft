@@ -23,8 +23,10 @@ export interface WorkspaceSidebarEntry {
 export const workspaceActivityPreviewLimit = 3
 
 /** Identifies manager sessions that only expose a delegated agent transcript. */
-export function isSubagentSession(session: Pick<SessionSummary, 'subagentRelation'>): boolean {
-  return session.subagentRelation !== undefined
+export function isSubagentSession(
+  session: Pick<SessionSummary, 'isSubagent' | 'subagentRelation'>,
+): boolean {
+  return session.isSubagent === true || session.subagentRelation !== undefined
 }
 
 /** Counts active and finished-unread sessions belonging to one workspace. */
