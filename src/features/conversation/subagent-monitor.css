@@ -10,6 +10,22 @@
   padding: 8px 10px;
   background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface));
   color: var(--ink);
+  text-decoration: none;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+.subagent-session-banner:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 58%, var(--surface));
+}
+.subagent-session-banner:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.subagent-session-banner:active {
+  transform: scale(0.99);
 }
 .subagent-session-banner-mark {
   display: grid;
@@ -41,35 +57,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.subagent-session-banner-link {
+.subagent-session-banner-arrow {
   flex: 0 0 auto;
-  min-height: 28px;
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  padding: 0 9px;
-  background: var(--surface);
-  color: var(--ink);
-  font: 600 11px inherit;
-  cursor: pointer;
-  transition:
-    border-color 180ms ease,
-    background 180ms ease,
-    transform 180ms ease;
-}
-.subagent-session-banner-link:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--surface-raised);
-}
-.subagent-session-banner-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.subagent-session-banner-link:active:not(:disabled) {
-  transform: scale(0.97);
-}
-.subagent-session-banner-link:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
 }
 .subagent-monitor {
   display: grid;
@@ -341,10 +333,8 @@
     align-items: flex-start;
     padding: 7px 8px;
   }
-  .subagent-session-banner-link {
+  .subagent-session-banner-arrow {
     align-self: center;
-    padding-right: 7px;
-    padding-left: 7px;
   }
   .subagent-monitor-heading {
     padding-right: 8px;
@@ -365,7 +355,7 @@
 @media (prefers-reduced-motion: reduce) {
   .subagent-monitor-history summary,
   .subagent-row,
-  .subagent-session-banner-link {
+  .subagent-session-banner {
     transition: none;
   }
 }

@@ -886,6 +886,16 @@ function App() {
 
   // Selected session and loading state
   const selectedSession = sessions.find((session) => session.id === selectedId)
+  const selectedSubagentParent = (() => {
+    const relation = selectedSession?.subagentRelation
+    if (relation) return sessions.find((session) => session.id === relation.parentManagerSessionId)
+    const recent = selectedSession?.sessionPath
+      ? recentSessions.find((session) => session.sessionPath === selectedSession.sessionPath)
+      : undefined
+    return recent?.parentSessionPath
+      ? sessions.find((session) => session.sessionPath === recent.parentSessionPath)
+      : undefined
+  })()
   const selectedSessionId = selectedSession?.id
   const selectedBridgeSnapshot = selectedParentBridgeSnapshot
   const selectedRelayRunning = selectedSession?.status === 'running'
@@ -1482,12 +1492,10 @@ function App() {
                       />
                     )}
                     <ToastStack onDismiss={dismissToast} toasts={visibleToasts} />
-                    {selectedSession.subagentRelation && (
+                    {selectedSubagentParent && selectedSession && (
                       <SubagentSessionBanner
-                        parentSession={sessions.find((session) =>
-                          session.id === selectedSession.subagentRelation?.parentManagerSessionId
-                        )}
-                        parentSessionId={selectedSession.subagentRelation.parentManagerSessionId}
+                        parentSession={selectedSubagentParent}
+                        parentSessionId={selectedSubagentParent.id}
                         onNavigate={selectSession}
                       />
                     )}

@@ -1,4 +1,5 @@
 import type { SessionSummary } from '../../../shared/types.ts'
+import { urlForSession } from '../workspace/session-url.ts'
 
 interface SubagentSessionBannerProps {
   parentSession?: SessionSummary
@@ -14,20 +15,22 @@ export function SubagentSessionBanner({
 }: SubagentSessionBannerProps) {
   const parentName = parentSession?.name || 'parent session'
   return (
-    <section aria-label='Subagent session' className='subagent-session-banner'>
+    <a
+      aria-label={`Subagent flow for ${parentName}. Return to parent session`}
+      className='subagent-session-banner'
+      href={urlForSession(parentSessionId)}
+      onClick={(event) => {
+        event.preventDefault()
+        onNavigate(parentSessionId)
+      }}
+      title={`Return to ${parentName}`}
+    >
       <span aria-hidden='true' className='subagent-session-banner-mark'>↳</span>
       <span className='subagent-session-banner-copy'>
         <strong>Subagent flow</strong>
         <span>Working for {parentName}</span>
       </span>
-      <button
-        className='subagent-session-banner-link'
-        onClick={() => onNavigate(parentSessionId)}
-        title={`Return to ${parentName}`}
-        type='button'
-      >
-        Back to parent
-      </button>
-    </section>
+      <span aria-hidden='true' className='subagent-session-banner-arrow'>↗</span>
+    </a>
   )
 }
