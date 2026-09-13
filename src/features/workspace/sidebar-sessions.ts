@@ -136,7 +136,7 @@ export function sidebarSessions(
     !recentIds.has(session.id) && !recentPaths.has(session.sessionPath)
   )
   return [...pending, ...recentSessions]
-    .filter(({ cwd }) => cwd === workspacePath)
+    .filter(({ cwd, agentStatus }) => cwd === workspacePath && agentStatus === undefined)
     .sort((left, right) => right.updatedAt - left.updatedAt)
 }
 

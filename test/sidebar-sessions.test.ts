@@ -56,6 +56,29 @@ test('keeps a sent session visible when persistence temporarily omits it', () =>
   assert.deepEqual(sidebarSessions([], '/workspace', [persisted]), [persisted])
 })
 
+test('excludes subagent sessions but keeps other child sessions', () => {
+  const subagent = {
+    ...persisted,
+    id: 'subagent-id',
+    name: 'Explore#2b38211f',
+    sessionPath: '/sessions/subagent.jsonl',
+    parentSessionPath: persisted.sessionPath,
+    agentStatus: 'finished' as const,
+  }
+  const userChild = {
+    ...persisted,
+    id: 'user-child-id',
+    name: 'User-created fork',
+    sessionPath: '/sessions/user-child.jsonl',
+    parentSessionPath: persisted.sessionPath,
+  }
+
+  assert.deepEqual(sidebarSessions([subagent, userChild, persisted], '/workspace'), [
+    userChild,
+    persisted,
+  ])
+})
+
 test('uses persisted order once the sent session is returned', () => {
   const other = {
     ...persisted,
