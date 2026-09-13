@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  agentPendingStatus,
+  bridgeAgentsByToolCallId,
   bridgeAgentIdsByToolCallId,
   resolveToolCallAgentId,
 } from '../src/features/conversation/tool-call-agent.ts'
@@ -38,6 +40,38 @@ test('maps a foreground bridge identity to the Agent card', () => {
 
   assert.equal(mapping.get(execution.id), 'agent-live')
   assert.equal(resolveToolCallAgentId(undefined, mapping.get(execution.id)), 'agent-live')
+})
+
+test('passes exact bridge activity through to a pending Agent card', () => {
+  const agent = bridgeAgentsByToolCallId(
+    [{ id: 'call-foreground', name: 'Agent', args: {}, status: 'running' }],
+    {
+      schemaVersion: 1,
+      agents: [{
+        agentId: 'agent-live',
+        toolCallId: 'call-foreground',
+        type: 'Explore',
+        description: 'Inspect the API',
+        status: 'running',
+        startedAt: 1,
+        latestActivity: 'grep',
+        toolUses: 1,
+        turnCount: 1,
+        tokens: { input: 1, output: 2, cacheWrite: 0 },
+      }],
+    },
+  )
+    .get('call-foreground')
+
+  assert.equal(agent?.agentId, 'agent-live')
+  assert.equal(agentPendingStatus(agent?.agentId, agent?.latestActivity), 'grep')
+})
+
+test('uses bridge activity or a specific running fallback for a pending Agent card', () => {
+  assert.equal(agentPendingStatus('agent-live', 'grep'), 'grep')
+  assert.equal(agentPendingStatus('agent-live', ''), 'Running…')
+  assert.equal(agentPendingStatus('agent-live', '   '), 'Running…')
+  assert.equal(agentPendingStatus(undefined, 'grep'), undefined)
 })
 
 test('resolves a live Agent card identity from the bridge and prefers its completed result', () => {

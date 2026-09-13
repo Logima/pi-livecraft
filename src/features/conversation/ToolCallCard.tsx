@@ -25,7 +25,7 @@ import {
   toolContentText,
   type AgentExecutionStatus,
 } from './tool-protocol.ts'
-import { resolveToolCallAgentId } from './tool-call-agent.ts'
+import { agentPendingStatus, resolveToolCallAgentId } from './tool-call-agent.ts'
 
 export { Markdown } from './Markdown.tsx'
 export { resolveToolCallAgentId } from './tool-call-agent.ts'
@@ -35,6 +35,7 @@ interface ToolCallCardProps {
   animateLiveChanges?: boolean
   args: unknown
   bridgeAgentId?: string
+  bridgeLatestActivity?: string
   hasResult: boolean
   id: string
   durationMs?: number
@@ -62,6 +63,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   animateLiveChanges = false,
   args,
   bridgeAgentId,
+  bridgeLatestActivity,
   hasResult,
   id,
   durationMs,
@@ -154,6 +156,9 @@ export const ToolCallCard = memo(function ToolCallCard({
     ? bridgeAgentId
       ? 'running'
       : agentStatuses.get(agentId) ?? agentExecutionStatus(detailStatus)
+    : undefined
+  const pendingAgentLabel = pending && agentStatus === 'running'
+    ? agentPendingStatus(bridgeAgentId, bridgeLatestActivity)
     : undefined
 
   /** Force-kills the active tool's child process without aborting the Pi session. */
@@ -273,7 +278,7 @@ export const ToolCallCard = memo(function ToolCallCard({
                 ? 'Generating…'
                 : partialOutput
                 ? <span aria-hidden='true'>↗ {partialOutputLength} car.</span>
-                : 'In progress…'}
+                : pendingAgentLabel ?? 'In progress…'}
               {active && (
                 <span
                   aria-label={streaming ? 'Arguments are being generated' : 'Tool in progress'}

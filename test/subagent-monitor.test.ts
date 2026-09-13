@@ -236,6 +236,60 @@ test('reuses the same row when an Agent run resumes with the same ID', () => {
   }])
 })
 
+test('reload-shaped exact bridge correlation promotes one real row', () => {
+  const view = projectSubagentMonitor(
+    [],
+    [{
+      id: 'call-foreground',
+      name: 'Agent',
+      args: { description: 'Inspect API', subagent_type: 'Explore' },
+      status: 'running',
+    }],
+    {
+      schemaVersion: 1,
+      agents: [{
+        agentId: 'agent-foreground',
+        toolCallId: 'call-foreground',
+        childSessionId: 'child-foreground',
+        type: 'Explore',
+        description: 'Inspect API',
+        status: 'running',
+        startedAt: 100,
+        model: { provider: 'openai', modelId: 'gpt-5' },
+        requestedModel: 'gpt-5',
+        thinking: 'xhigh',
+        requestedThinking: 'xhigh',
+        latestActivity: 'grep',
+        toolUses: 3,
+        turnCount: 2,
+        tokens: { input: 10, output: 20, cacheWrite: 2 },
+      }],
+    },
+    250,
+  )
+
+  assert.equal(view.active.length, 1)
+  assert.deepEqual(view.active[0], {
+    agentId: 'agent-foreground',
+    toolCallId: 'call-foreground',
+    childSessionId: 'child-foreground',
+    description: 'Inspect API',
+    subagentType: 'Explore',
+    status: 'running',
+    startedAt: 100,
+    completedAt: undefined,
+    effectiveModel: { provider: 'openai', modelId: 'gpt-5' },
+    model: 'gpt-5',
+    thinking: 'xhigh',
+    latestActivity: 'grep',
+    toolCount: 3,
+    tokens: { input: 10, output: 20, cacheWrite: 2 },
+    durationMs: 150,
+  })
+  assert.equal(view.active.some((row) => row.provisional), false)
+  assert.equal(view.history.length, 0)
+})
+
 test('bridge running duration overrides fallback telemetry with elapsed time', () => {
   const view = projectSubagentMonitor(
     [agentResult('call-live', {

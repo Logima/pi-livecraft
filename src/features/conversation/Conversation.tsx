@@ -31,7 +31,7 @@ import { Markdown } from './Markdown.tsx'
 import { MessageCard, TurnUsage } from './MessageCard.tsx'
 import { isVisibleConversationMessage } from './message-display.ts'
 import { ToolCallCard } from './ToolCallCard.tsx'
-import { bridgeAgentIdsByToolCallId } from './tool-call-agent.ts'
+import { bridgeAgentsByToolCallId } from './tool-call-agent.ts'
 import {
   conversationHistoryStart,
   resumesAutoScrollAfterDownwardScroll,
@@ -103,8 +103,8 @@ export const Conversation = memo(function Conversation(
     () => new Map(toolExecutions.map((execution) => [execution.id, execution])),
     [toolExecutions],
   )
-  const bridgeAgentIds = useMemo(
-    () => bridgeAgentIdsByToolCallId(toolExecutions, bridgeSnapshot),
+  const bridgeAgents = useMemo(
+    () => bridgeAgentsByToolCallId(toolExecutions, bridgeSnapshot),
     [bridgeSnapshot, toolExecutions],
   )
   const agentStatuses = useMemo(
@@ -404,7 +404,8 @@ export const Conversation = memo(function Conversation(
                       hasResult={result !== undefined}
                       semiDetailed={semiDetailed}
                       id={call.id}
-                      bridgeAgentId={bridgeAgentIds.get(call.id)}
+                      bridgeAgentId={bridgeAgents.get(call.id)?.agentId}
+                      bridgeLatestActivity={bridgeAgents.get(call.id)?.latestActivity}
                       durationMs={toolDurations.get(call.id)}
                       interrupted={execution?.status === 'interrupted'}
                       key={call.id}
@@ -469,7 +470,8 @@ export const Conversation = memo(function Conversation(
                     hasResult={result !== undefined}
                     semiDetailed={semiDetailed}
                     id={part.call.id}
-                    bridgeAgentId={bridgeAgentIds.get(part.call.id)}
+                    bridgeAgentId={bridgeAgents.get(part.call.id)?.agentId}
+                    bridgeLatestActivity={bridgeAgents.get(part.call.id)?.latestActivity}
                     durationMs={toolDurations.get(part.call.id)}
                     interrupted={execution?.status === 'interrupted'}
                     key={part.call.id}
@@ -507,7 +509,8 @@ export const Conversation = memo(function Conversation(
               hasResult={execution.result !== undefined}
               semiDetailed={semiDetailed}
               id={execution.id}
-              bridgeAgentId={bridgeAgentIds.get(execution.id)}
+              bridgeAgentId={bridgeAgents.get(execution.id)?.agentId}
+              bridgeLatestActivity={bridgeAgents.get(execution.id)?.latestActivity}
               durationMs={toolDurations.get(execution.id)}
               interrupted={execution.status === 'interrupted'}
               key={execution.id}

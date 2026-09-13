@@ -67,6 +67,31 @@ export function bridgeAgentIdsByToolCallId(
   return resolved
 }
 
+/** Returns the authoritative running bridge records matched to parent Agent calls. */
+export function bridgeAgentsByToolCallId(
+  executions: readonly ToolExecution[],
+  snapshot?: SubagentBridgeSnapshot,
+): ReadonlyMap<string, SubagentBridgeAgent> {
+  const ids = bridgeAgentIdsByToolCallId(executions, snapshot)
+  const agentsById = new Map((snapshot?.agents ?? []).map((agent) => [agent.agentId, agent]))
+  const resolved = new Map<string, SubagentBridgeAgent>()
+  for (const [toolCallId, agentId] of ids) {
+    const agent = agentsById.get(agentId)
+    if (agent) resolved.set(toolCallId, agent)
+  }
+  return resolved
+}
+
+/** Selects the bounded activity label for an Agent card with a correlated running bridge row. */
+export function agentPendingStatus(
+  bridgeAgentId: string | undefined,
+  latestActivity?: string,
+): string | undefined {
+  if (bridgeAgentId === undefined) return undefined
+  const activity = latestActivity?.trim()
+  return activity || 'Running…'
+}
+
 /** Prefers the persisted result identity and falls back to the correlated bridge identity. */
 export function resolveToolCallAgentId(
   resultDetails: unknown,
