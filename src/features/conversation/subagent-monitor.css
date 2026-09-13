@@ -140,6 +140,8 @@
 }
 .subagent-status.running i {
   background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+  animation: session-status-pulse 1.8s ease-out infinite;
 }
 .subagent-status.interrupted {
   opacity: 0.78;
