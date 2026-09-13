@@ -42,6 +42,7 @@ import { Conversation } from './features/conversation/Conversation.tsx'
 import { conversationMessageEntries } from './features/conversation/message-reconciliation.ts'
 import { messageUsage } from './features/conversation/message-usage.ts'
 import { SubagentMonitor } from './features/conversation/SubagentMonitor.tsx'
+import { SubagentSessionBanner } from './features/conversation/SubagentSessionBanner.tsx'
 import {
   subagentRelationForRow,
   subagentStopPrompt,
@@ -1481,6 +1482,15 @@ function App() {
                       />
                     )}
                     <ToastStack onDismiss={dismissToast} toasts={visibleToasts} />
+                    {selectedSession.subagentRelation && (
+                      <SubagentSessionBanner
+                        parentSession={sessions.find((session) =>
+                          session.id === selectedSession.subagentRelation?.parentManagerSessionId
+                        )}
+                        parentSessionId={selectedSession.subagentRelation.parentManagerSessionId}
+                        onNavigate={selectSession}
+                      />
+                    )}
                     <SubagentMonitor
                       liveMessages={liveMessages}
                       bridgeSnapshot={selectedBridgeSnapshot}

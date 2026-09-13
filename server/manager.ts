@@ -823,7 +823,6 @@ function reconcileRelayChildren(
 function settleRelayChild(child: ManagedSession): void {
   if (child.summary.status === 'exited') return
   handlePiEvent(child, { type: 'agent_settled' })
-  delete child.summary.subagentRelation
   child.relayStates.clear()
   markSessionIdle(child, true)
 }
