@@ -287,7 +287,11 @@ export function otherWorkspaceSessions(
   pinnedSessionPaths: ReadonlySet<string> = new Set(),
 ): SessionSummary[] {
   const relevant = sessions.flatMap((session) => {
-    if (session.cwd === workspacePath || session.status === 'exited') return []
+    if (
+      session.cwd === workspacePath
+      || session.status === 'exited'
+      || isSubagentSession(session)
+    ) return []
     const indicator = sessionIndicator(session, '', compactingSessionIds, completedSessionIds)
     const pinned = session.sessionPath !== undefined && pinnedSessionPaths.has(session.sessionPath)
     return pinned || (indicator !== null && indicator !== 'idle') ? [{ session, indicator }] : []

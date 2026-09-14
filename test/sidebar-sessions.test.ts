@@ -52,7 +52,13 @@ test('counts running and unread sessions for a workspace without delegated agent
       status: 'idle',
       pendingUi: [],
     },
-    { id: 'waiting', cwd: '/workspace', name: 'Waiting', status: 'running', pendingUi: [{ method: 'confirm' }] },
+    {
+      id: 'waiting',
+      cwd: '/workspace',
+      name: 'Waiting',
+      status: 'running',
+      pendingUi: [{ method: 'confirm' }],
+    },
     { id: 'other', cwd: '/other', name: 'Other', status: 'running', pendingUi: [] },
   ]
 
@@ -266,6 +272,35 @@ test('shows active and unviewed completed sessions from other workspaces, active
       new Set(['/sessions/completed.jsonl']),
     ),
     [starting, completed],
+  )
+})
+
+test('hides subagent sessions from other workspace activity', () => {
+  const subagent = {
+    ...remoteSession,
+    id: 'subagent',
+    name: 'Delegated agent',
+    isSubagent: true,
+  }
+  const related = {
+    ...remoteSession,
+    id: 'related',
+    name: 'Related transcript',
+    subagentRelation: {
+      parentManagerSessionId: 'parent',
+      agentId: 'agent',
+      childSessionId: 'child',
+    },
+  }
+
+  assert.deepEqual(
+    otherWorkspaceSessions(
+      [subagent, related],
+      '/workspace',
+      new Set(),
+      new Set(),
+    ),
+    [],
   )
 })
 
