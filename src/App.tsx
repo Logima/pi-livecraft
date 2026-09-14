@@ -1292,7 +1292,7 @@ function App() {
       ) return
       const shortcut = shortcutFromEvent(event)
       const command = (Object.entries(shortcuts) as [CommandId, string | undefined][])
-        .find(([, value]) => value === shortcut)
+        .find(([, value]) => Boolean(value) && value === shortcut)
         ?.[0]
       if (!command) return
       if (
