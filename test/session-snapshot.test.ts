@@ -67,6 +67,23 @@ test('replays an in-progress relayed child turn in event order', () => {
   })
 })
 
+test('replays completed relayed tool executions after refresh', () => {
+  const live = new LiveSessionEvents(true)
+  live.receive({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'read', args: {} }, 1)
+  live.receive({
+    type: 'tool_execution_end',
+    toolCallId: 'call-1',
+    toolName: 'read',
+    result: { content: 'done' },
+  }, 2)
+  live.receive({ type: 'agent_settled' }, 3)
+
+  assert.deepEqual(live.snapshot().map(({ data }) => data.type), [
+    'tool_execution_start',
+    'tool_execution_end',
+  ])
+})
+
 test('retains the latest steering queue for snapshot replay', () => {
   const live = new LiveSessionEvents()
   live.receive({ type: 'queue_update', steering: ['First'] }, 1)
@@ -189,6 +206,18 @@ test('filters compaction entries without a string summary', () => {
     { role: 'user', content: 'Hello' },
     { role: 'user', content: 'World' },
   ])
+})
+
+test('retains hidden subagent notifications for status reconciliation', () => {
+  const notification = {
+    role: 'custom',
+    customType: 'subagent-notification',
+    content: '',
+    display: false,
+    details: { id: 'agent-1', status: 'completed' },
+  }
+
+  assert.deepEqual(visibleSessionMessages([notification]), [notification])
 })
 
 test('keeps visible custom messages out of hidden extension context', () => {

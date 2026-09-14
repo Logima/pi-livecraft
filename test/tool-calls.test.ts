@@ -48,6 +48,23 @@ test('reconciles running Agent results with completion notifications', () => {
   assert.equal(statuses.get('agent-3'), 'finished')
 })
 
+test('does not regress a finished Agent when a running result is listed later', () => {
+  const statuses = agentStatusesInMessages([
+    {
+      role: 'custom',
+      customType: 'subagent-notification',
+      details: { id: 'agent-1', status: 'completed' },
+    },
+    {
+      role: 'toolResult',
+      toolName: 'Agent',
+      details: { agentId: 'agent-1', status: 'background' },
+    },
+  ])
+
+  assert.equal(statuses.get('agent-1'), 'finished')
+})
+
 test('extracts tool calls and their resolved result from Pi messages', () => {
   const calls = toolCallsInMessage({
     role: 'assistant',

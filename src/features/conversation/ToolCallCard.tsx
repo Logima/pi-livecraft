@@ -86,7 +86,6 @@ export const ToolCallCard = memo(function ToolCallCard({
 }: ToolCallCardProps) {
   const toolName = name || provisionalToolName(args, streamingArguments) || ''
   const pending = !hasResult
-  const active = pending && !interrupted
   const filePath = toolName === 'read' || toolName === 'write' || toolName === 'edit'
     ? toolFilePath(args)
     : null
@@ -160,6 +159,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   const pendingAgentLabel = pending && agentStatus === 'running'
     ? agentPendingStatus(bridgeAgentId, bridgeLatestActivity)
     : undefined
+  const active = pending && !interrupted && agentStatus !== 'finished'
   const hasAuthoritativeRunningBridge = pending && agentStatus === 'running'
     && bridgeAgentId !== undefined
 
@@ -280,7 +280,12 @@ export const ToolCallCard = memo(function ToolCallCard({
                 ? 'Generating…'
                 : partialOutput
                 ? <span aria-hidden='true'>↗ {partialOutputLength} car.</span>
-                : pendingAgentLabel ?? (hasAuthoritativeRunningBridge ? null : 'In progress…')}
+                : pendingAgentLabel
+                ?? (agentStatus === 'finished'
+                  ? 'Finished'
+                  : hasAuthoritativeRunningBridge
+                  ? null
+                  : 'In progress…')}
               {active && (
                 <span
                   aria-label={streaming ? 'Arguments are being generated' : 'Tool in progress'}

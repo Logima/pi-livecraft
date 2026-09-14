@@ -56,7 +56,12 @@ export function agentStatusesInMessages(
       ? message.details.id
       : undefined
     const status = agentExecutionStatus(message.details.status)
-    if (agentId && status) statuses.set(agentId, status)
+    if (agentId && status) {
+      const previous = statuses.get(agentId)
+      // A terminal notification is authoritative even when an older running
+      // result appears later in the reconstructed message order.
+      if (previous !== 'finished' || status === 'finished') statuses.set(agentId, status)
+    }
   }
   return statuses
 }

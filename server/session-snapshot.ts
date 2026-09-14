@@ -91,8 +91,11 @@ export class LiveSessionEvents {
         { data, sequence },
       )
     }
-    if (type === 'tool_execution_end' && typeof data.toolCallId === 'string')
-      this.#deletePrefix(`tool:${data.toolCallId}:`)
+    if (type === 'tool_execution_end' && typeof data.toolCallId === 'string') {
+      if (this.retainCompletedMessages)
+        this.#events.set(`tool:${data.toolCallId}:end`, { data, sequence })
+      else this.#deletePrefix(`tool:${data.toolCallId}:`)
+    }
     if (type === 'auto_retry_start') this.#events.set('retry', { data, sequence })
     if (type === 'auto_retry_end') this.#events.delete('retry')
   }
@@ -132,14 +135,14 @@ export function activeSessionMessages(
   )
 }
 
-/** Keeps messages useful to the interface without exposing hidden custom messages. */
+/** Keeps renderable messages and hidden subagent status notifications for reconciliation. */
 export function visibleSessionMessages(messages: JsonObject[]): JsonObject[] {
   return messages.filter((message) =>
     message.role === 'user'
     || message.role === 'assistant'
     || message.role === 'toolResult'
-    || (message.role === 'custom' && message.display === true
-      && typeof message.customType === 'string')
+    || (message.role === 'custom' && typeof message.customType === 'string'
+      && (message.display === true || message.customType === 'subagent-notification'))
   )
 }
 
