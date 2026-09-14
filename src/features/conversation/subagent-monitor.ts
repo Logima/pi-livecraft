@@ -37,6 +37,7 @@ export interface SubagentMonitorRow {
   status?: SubagentLifecycle
   durationMs?: number
   toolCount?: number
+  turnCount?: number
   tokens?: number | AgentTokens
   childSessionId?: string
   effectiveModel?: RequestedModel
@@ -344,6 +345,7 @@ function applyBridgeAgent(
   row.thinking = agent.requestedThinking ?? agent.thinking
   row.latestActivity = agent.latestActivity
   row.toolCount = agent.toolUses
+  row.turnCount = agent.turnCount
   row.tokens = agent.tokens
   const endAt = agent.status === 'running' ? now : agent.completedAt ?? agent.startedAt
   row.durationMs = Math.max(0, endAt - agent.startedAt)

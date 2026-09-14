@@ -172,11 +172,20 @@ function SubagentRow({
             {modelConfig.text}
           </span>
         )}
-        {(row.durationMs !== undefined || row.toolCount !== undefined) && (
+        {(row.durationMs !== undefined
+          || row.turnCount !== undefined
+          || row.toolCount !== undefined) && (
           <span className='subagent-row-activity'>
             {row.durationMs !== undefined && <span>{formatSubagentDuration(row.durationMs)}</span>}
+            {row.turnCount !== undefined && (
+              <span aria-label={`${row.turnCount} turns`} title={`${row.turnCount} turns`}>
+                <span aria-hidden='true'>↻</span>{row.turnCount}
+              </span>
+            )}
             {row.toolCount !== undefined && (
-              <span>{row.toolCount} tool{row.toolCount === 1 ? '' : 's'}</span>
+              <span aria-label={`${row.toolCount} tool uses`} title={`${row.toolCount} tool uses`}>
+                <span aria-hidden='true'>🪏</span> {row.toolCount}
+              </span>
             )}
           </span>
         )}

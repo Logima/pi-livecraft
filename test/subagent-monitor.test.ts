@@ -283,6 +283,7 @@ test('reload-shaped exact bridge correlation promotes one real row', () => {
     thinking: 'xhigh',
     latestActivity: 'grep',
     toolCount: 3,
+    turnCount: 2,
     tokens: { input: 10, output: 20, cacheWrite: 2 },
     durationMs: 150,
   })
