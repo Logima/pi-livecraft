@@ -5,6 +5,7 @@
   overflow-y: auto;
   overflow-x: clip;
   padding: 42px max(28px, calc((100% - 1000px) / 2)) 0;
+  outline: 0;
   scrollbar-gutter: stable;
 }
 .conversation-content {
