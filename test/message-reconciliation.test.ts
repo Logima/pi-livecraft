@@ -152,6 +152,20 @@ test('keeps an unmatched optimistic user message as a live entry', () => {
   ])
 })
 
+test('places streamed output after a reconciled optimistic user message', () => {
+  const history = [{ role: 'user', content: 'New turn' }]
+  const live = [
+    { id: 'optimistic-user', message: { role: 'user', content: 'New turn' } },
+    {
+      id: 'assistant-1',
+      historyIndex: 0,
+      message: { role: 'assistant', content: 'Streaming response' },
+    },
+  ]
+  const entries = conversationMessageEntries(history, live)
+  assert.deepEqual(entries.map(({ key }) => key), ['optimistic-user', 'assistant-1'])
+})
+
 test('keeps anchored live output before history that arrives later', () => {
   const history = [
     { role: 'user', content: 'Before' },

@@ -93,6 +93,7 @@ export function conversationMessageEntries(
     else liveByKey.set(key, [live])
   }
   const matchedLiveIds = new Set<string>()
+  const matchedHistoryIndexByLiveId = new Map<string, number>()
   const historyEntries = historyMessages.map((message, historyIndex): ConversationMessageEntry => {
     const key = messageMatchKey(message)
     const candidates = key === null ? undefined : liveByKey.get(key)
@@ -101,6 +102,7 @@ export function conversationMessageEntries(
     const live = candidateIndex >= 0 ? candidates?.[candidateIndex] : undefined
     if (live) {
       matchedLiveIds.add(live.id)
+      matchedHistoryIndexByLiveId.set(live.id, historyIndex)
       candidates?.splice(candidateIndex, 1)
     }
     return {
@@ -111,12 +113,21 @@ export function conversationMessageEntries(
     }
   })
   const liveEntriesByHistoryIndex = new Map<number, ConversationMessageEntry[]>()
-  for (const { id, message, historyIndex } of liveMessages) {
+  for (const [liveIndex, { id, message, historyIndex }] of liveMessages.entries()) {
     if (matchedLiveIds.has(id)) continue
-    const index = Math.max(
+    const anchor = Math.max(
       0,
       Math.min(historyEntries.length, historyIndex ?? historyEntries.length),
     )
+    // A streamed assistant can be anchored before an optimistic user message. Once that
+    // user reconciles into history, keep later live output after it rather than before it.
+    const matchedLiveBeforeAnchor = liveMessages
+      .slice(0, liveIndex)
+      .filter((live) => {
+        const matchedIndex = matchedHistoryIndexByLiveId.get(live.id)
+        return matchedIndex === anchor
+      }).length
+    const index = Math.min(historyEntries.length, anchor + matchedLiveBeforeAnchor)
     const entries = liveEntriesByHistoryIndex.get(index)
     const entry = { key: id, message, source: 'live' as const }
     if (entries) entries.push(entry)
