@@ -8,6 +8,7 @@ import { isObject } from '../../../shared/is-object.ts'
 import type { JsonObject, SessionSnapshot } from '../../../shared/types.ts'
 import { activityForPiEvent, type Activity } from './activity.ts'
 import { advanceEventSequence } from './event-sequence.ts'
+import { mergeCachedRelayEvents } from './snapshot-reconciliation.ts'
 import type { LiveMessage } from './message-reconciliation.ts'
 import {
   applyToolCallUpdate,
@@ -44,6 +45,7 @@ export function useConversationRuntime(
   selectedId: string,
   onError: (cause: unknown) => void,
   replayEvent: (sessionId: string, event: JsonObject, sequence?: number) => void,
+  isRelaySession = false,
 ) {
   const [snapshot, setSnapshot] = useState<SessionSnapshot>(emptySnapshot)
   const [snapshotSessionId, setSnapshotSessionId] = useState('')
@@ -149,10 +151,7 @@ export function useConversationRuntime(
           const cachedSnapshot = snapshotCacheRef.current.get(sessionId)
           // A relay child has no Pi history of its own; keep its retained stream when
           // process reassignment briefly returns an otherwise empty snapshot.
-          if (
-            cachedSnapshot && cachedSnapshot.liveEvents.length > 0
-            && nextSnapshot.liveEvents.length === 0
-          ) nextSnapshot = { ...nextSnapshot, liveEvents: cachedSnapshot.liveEvents }
+          nextSnapshot = mergeCachedRelayEvents(cachedSnapshot, nextSnapshot, isRelaySession)
           snapshotCacheRef.current.set(sessionId, nextSnapshot)
           if (request.cancelled) return nextSnapshot
           if (version !== snapshotRefreshVersionRef.current || sessionId !== selectedIdRef.current)
@@ -193,7 +192,7 @@ export function useConversationRuntime(
       })
     snapshotRefreshRef.current = request
     return request.promise
-  }, [clearLiveMessages, flushLiveUpdates, onError, replayEvent])
+  }, [clearLiveMessages, flushLiveUpdates, isRelaySession, onError, replayEvent])
 
   /** Applies a selected-session Pi event once, preserving stream sequence and replay order. */
   const handlePiEvent = useCallback(
@@ -223,10 +222,12 @@ export function useConversationRuntime(
         const startedAt = requestStartedAtRef.current
         const output = outputTokensInAgentEnd(event)
         if (startedAt !== undefined && output > 0)
-          setObservedResponseSpeeds((current) => new Map(current).set(
-            sessionId,
-            output / ((performance.now() - startedAt) / 1000),
-          ))
+          setObservedResponseSpeeds((current) =>
+            new Map(current).set(
+              sessionId,
+              output / ((performance.now() - startedAt) / 1000),
+            )
+          )
       }
       const streamedToolCall = toolCallInUpdate(event)
       if (streamedToolCall) {

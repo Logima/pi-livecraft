@@ -480,6 +480,9 @@ function App() {
     workspacePath,
   ])
 
+  const selectedSessionIsRelay = sessions.some(
+    (session) => session.id === selectedId && session.subagentRelation !== undefined,
+  )
   const {
     activity,
     addConversationNotice,
@@ -500,7 +503,12 @@ function App() {
     snapshot,
     snapshotSessionId,
     toolExecutions,
-  } = useConversationRuntime(selectedId, handleWorkspaceError, replayPiEvent)
+  } = useConversationRuntime(
+    selectedId,
+    handleWorkspaceError,
+    replayPiEvent,
+    selectedSessionIsRelay,
+  )
   const handleForkConversation = useCallback(async (entryId: string): Promise<boolean> => {
     const response = await sendPiCommand(selectedId, { type: 'fork', entryId })
     const data = isObject(response.data) ? response.data : undefined
