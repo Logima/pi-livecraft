@@ -586,7 +586,6 @@ export function WorkspaceSidebar({
                       aria-label={`Open workspace ${entry.path}${isActive ? ', Active' : ''}`}
                       className='workspace-item'
                       onClick={() => onSelectWorkspace(entry.path)}
-                      title={entry.path}
                       type='button'
                     >
                       <WorkspaceIcon />
@@ -595,7 +594,7 @@ export function WorkspaceSidebar({
                           <strong>{entry.displayName}</strong>
                           {isActive && <span className='workspace-active-label'>Active</span>}
                         </span>
-                        <small title={entry.path}>{entry.path}</small>
+                        <small>{entry.path}</small>
                       </span>
                       <span
                         aria-label='Session status counts'
