@@ -161,6 +161,15 @@ function SubagentRow({
         <span className='subagent-row-title'>
           <strong>{title}</strong>
         </span>
+        {running && row.latestActivity && (
+          <span
+            aria-label={`Latest activity: ${row.latestActivity}`}
+            className='subagent-row-latest-activity'
+            title={row.latestActivity}
+          >
+            {row.latestActivity}
+          </span>
+        )}
       </span>
       <div className='subagent-row-facts'>
         {modelConfig && (

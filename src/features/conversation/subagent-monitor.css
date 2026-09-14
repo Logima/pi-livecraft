@@ -257,6 +257,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.subagent-row-latest-activity {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .subagent-row-facts {
   display: flex;
   grid-area: facts;
