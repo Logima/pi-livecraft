@@ -13,6 +13,7 @@ import {
   workspaceBasename,
   workspaceDisplayName,
   workspaceSidebarEntries,
+  runningSubagentParentSessionPaths,
   workspaceSessionCounts,
 } from '../src/features/workspace/sidebar-sessions.ts'
 
@@ -69,6 +70,37 @@ test('counts running and unread sessions for a workspace without delegated agent
       new Set(['/sessions/finished.jsonl', '/sessions/agent.jsonl']),
     ),
     { running: 1, waiting: 1, unread: 1 },
+  )
+})
+
+test('counts a root session as running while a persisted subagent runs', () => {
+  const root: SessionSummary = {
+    id: 'root',
+    cwd: '/workspace',
+    name: 'Root',
+    sessionPath: '/sessions/root.jsonl',
+    status: 'idle',
+    pendingUi: [],
+  }
+  const child: RecentSession = {
+    id: 'child',
+    cwd: '/workspace',
+    name: 'Child',
+    sessionPath: '/sessions/child.jsonl',
+    parentSessionPath: root.sessionPath,
+    agentStatus: 'running',
+    updatedAt: 1,
+  }
+
+  assert.deepEqual(runningSubagentParentSessionPaths([child]), new Set([root.sessionPath]))
+  assert.deepEqual(
+    workspaceSessionCounts(
+      [root],
+      '/workspace',
+      new Set(),
+      runningSubagentParentSessionPaths([child]),
+    ),
+    { running: 1, waiting: 0, unread: 0 },
   )
 })
 
@@ -301,6 +333,29 @@ test('hides subagent sessions from other workspace activity', () => {
       new Set(),
     ),
     [],
+  )
+})
+
+test('shows a root session in another workspace while its subagent runs', () => {
+  const root: SessionSummary = {
+    id: 'remote-root',
+    cwd: '/other-workspace',
+    name: 'Remote root',
+    sessionPath: '/sessions/remote-root.jsonl',
+    status: 'idle',
+    pendingUi: [],
+  }
+
+  assert.deepEqual(
+    otherWorkspaceSessions(
+      [root],
+      '/workspace',
+      new Set(),
+      new Set(),
+      new Set(),
+      new Set(['/sessions/remote-root.jsonl']),
+    ),
+    [root],
   )
 })
 

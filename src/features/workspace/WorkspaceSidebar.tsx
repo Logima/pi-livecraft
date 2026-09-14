@@ -44,6 +44,7 @@ interface WorkspaceSidebarProps {
   pinnedSessions: readonly PinnedSession[]
   recentSessions: RecentSession[]
   recentWorkspacePaths: string[]
+  runningSubagentSessionPaths: ReadonlySet<string>
   sentSessions: RecentSession[]
   sessions: SessionSummary[]
   selectedId: string
@@ -74,6 +75,7 @@ export function WorkspaceSidebar({
   pinnedSessions,
   recentSessions,
   recentWorkspacePaths,
+  runningSubagentSessionPaths,
   sentSessions,
   sessions,
   selectedId,
@@ -111,12 +113,13 @@ export function WorkspaceSidebar({
   )
   const activeSessionPaths = useMemo(
     () =>
-      new Set(
-        sessions.flatMap((session) =>
+      new Set([
+        ...sessions.flatMap((session) =>
           session.status !== 'exited' && session.sessionPath ? [session.sessionPath] : []
         ),
-      ),
-    [sessions],
+        ...runningSubagentSessionPaths,
+      ]),
+    [runningSubagentSessionPaths, sessions],
   )
   const sessionTree = useMemo(
     () =>
@@ -137,6 +140,7 @@ export function WorkspaceSidebar({
         compactingSessionIds,
         completedSessionIds,
         pinnedSessions,
+        runningSubagentSessionPaths,
       ),
     [
       compactingSessionIds,
@@ -316,13 +320,23 @@ export function WorkspaceSidebar({
       compactingSessionIds,
       completedSessionIds,
     )
+    const subagentIndicator = activeSession?.sessionPath
+        && runningSubagentSessionPaths.has(activeSession.sessionPath)
+      ? 'working' as const
+      : null
     const agentIndicator = recentSession.agentStatus === 'running'
       ? 'working'
       : recentSession.agentStatus === 'finished'
       ? 'complete'
       : null
-    const indicator = managedIndicator ?? agentIndicator
-    const indicatorClass = managedIndicator ?? (agentIndicator === 'working' ? 'working' : null)
+    const indicator = managedIndicator === 'waiting'
+      ? managedIndicator
+      : subagentIndicator ?? managedIndicator ?? agentIndicator
+    const indicatorClass = managedIndicator === 'waiting'
+      ? managedIndicator
+      : subagentIndicator
+        ?? managedIndicator
+        ?? (agentIndicator === 'working' ? 'working' : null)
     const indicatorLabel = managedIndicator
       ? undefined
       : agentIndicator === 'working'
@@ -423,7 +437,10 @@ export function WorkspaceSidebar({
       ? item.session.id
       : sessions.find((candidate) => candidate.sessionPath === session.sessionPath)?.id
     const indicator = item.kind === 'managed'
-      ? sessionIndicator(item.session, selectedId, compactingSessionIds, completedSessionIds)
+      ? item.session.sessionPath !== undefined
+          && runningSubagentSessionPaths.has(item.session.sessionPath)
+        ? 'working' as const
+        : sessionIndicator(item.session, selectedId, compactingSessionIds, completedSessionIds)
       : null
     const isPinned = item.kind === 'pinned' || item.pinned
     const actionTarget: SessionActionTarget = {
@@ -572,7 +589,12 @@ export function WorkspaceSidebar({
             ]
             const isExpanded = expandedWorkspacePaths.has(entry.path)
             const activityPreview = workspaceActivityPreview(activityItems, isExpanded)
-            const counts = workspaceSessionCounts(sessions, entry.path, completedSessionIds)
+            const counts = workspaceSessionCounts(
+              sessions,
+              entry.path,
+              completedSessionIds,
+              runningSubagentSessionPaths,
+            )
             const activityId = `workspace-activity-${index}`
             return (
               <div

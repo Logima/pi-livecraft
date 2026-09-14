@@ -35,6 +35,7 @@ export function isSubagentSession(
 export function sessionCounts(
   sessions: readonly SessionSummary[],
   completedSessionIds: ReadonlySet<string>,
+  runningSubagentParentSessionPaths: ReadonlySet<string> = new Set(),
 ): WorkspaceSessionCounts {
   return sessions.filter((session) => !isSubagentSession(session)).reduce(
     (counts, session) => {
@@ -42,7 +43,12 @@ export function sessionCounts(
         (request) => isBlockingDialog(request) && !isAgentSelector(request),
       )
       return {
-        running: counts.running + Number(session.status === 'running' && !waiting),
+        running: counts.running + Number(
+          (session.status === 'running'
+            || (session.sessionPath !== undefined
+              && runningSubagentParentSessionPaths.has(session.sessionPath)))
+            && !waiting,
+        ),
         waiting: counts.waiting + Number(waiting),
         unread: counts.unread + Number(
           completedSessionIds.has(session.sessionPath ?? session.id),
@@ -58,14 +64,29 @@ export function workspaceSessionCounts(
   sessions: readonly SessionSummary[],
   workspacePath: string,
   completedSessionIds: ReadonlySet<string>,
+  runningSubagentParentSessionPaths: ReadonlySet<string> = new Set(),
 ): WorkspaceSessionCounts {
   return sessionCounts(
     sessions.filter((session) => session.cwd === workspacePath),
     completedSessionIds,
+    runningSubagentParentSessionPaths,
   )
 }
 
 export type PinnedSession = Pick<RecentSession, 'cwd' | 'name' | 'sessionPath'>
+
+/** Returns root session paths with at least one currently running delegated agent. */
+export function runningSubagentParentSessionPaths(
+  sessions: readonly RecentSession[],
+): ReadonlySet<string> {
+  return new Set(
+    sessions.flatMap((session) =>
+      session.agentStatus === 'running' && session.parentSessionPath
+        ? [session.parentSessionPath]
+        : []
+    ),
+  )
+}
 
 /** Recognizes persisted Agent children even when their metadata is unavailable. */
 export function isSubagentRecentSession(
@@ -109,6 +130,7 @@ export function workspaceSidebarEntries(
   compactingSessionIds: ReadonlySet<string>,
   completedSessionIds: ReadonlySet<string>,
   pinnedSessions: readonly PinnedSession[] = [],
+  runningSubagentSessionPaths: ReadonlySet<string> = new Set(),
 ): WorkspaceSidebarEntry[] {
   const otherSessions = otherWorkspaceSessions(
     [...sessions],
@@ -116,6 +138,7 @@ export function workspaceSidebarEntries(
     compactingSessionIds,
     completedSessionIds,
     new Set(pinnedSessions.map((session) => session.sessionPath)),
+    runningSubagentSessionPaths,
   )
   const otherPinnedSessions = otherWorkspacePinnedSessions(
     pinnedSessions,
@@ -285,6 +308,7 @@ export function otherWorkspaceSessions(
   compactingSessionIds: ReadonlySet<string>,
   completedSessionIds: ReadonlySet<string>,
   pinnedSessionPaths: ReadonlySet<string> = new Set(),
+  runningSubagentSessionPaths: ReadonlySet<string> = new Set(),
 ): SessionSummary[] {
   const relevant = sessions.flatMap((session) => {
     if (
@@ -292,7 +316,10 @@ export function otherWorkspaceSessions(
       || session.status === 'exited'
       || isSubagentSession(session)
     ) return []
-    const indicator = sessionIndicator(session, '', compactingSessionIds, completedSessionIds)
+    const indicator = session.sessionPath !== undefined
+        && runningSubagentSessionPaths.has(session.sessionPath)
+      ? 'working' as const
+      : sessionIndicator(session, '', compactingSessionIds, completedSessionIds)
     const pinned = session.sessionPath !== undefined && pinnedSessionPaths.has(session.sessionPath)
     return pinned || (indicator !== null && indicator !== 'idle') ? [{ session, indicator }] : []
   })

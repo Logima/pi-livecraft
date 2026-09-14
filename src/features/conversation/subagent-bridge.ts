@@ -47,6 +47,11 @@ export interface SubagentBridgeSnapshot {
   agents: readonly SubagentBridgeAgent[]
 }
 
+/** Returns whether a bridge snapshot contains an agent that is still running. */
+export function hasRunningSubagents(snapshot: SubagentBridgeSnapshot | undefined): boolean {
+  return snapshot?.agents.some((agent) => agent.status === 'running') ?? false
+}
+
 /** Parses the bounded status text emitted by the Livecraft companion extension. */
 export function parseSubagentBridgeSnapshot(value: unknown): SubagentBridgeSnapshot | undefined {
   if (typeof value !== 'string' || byteLength(value) > maxSubagentBridgePayloadBytes)

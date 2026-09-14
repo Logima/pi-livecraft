@@ -48,6 +48,7 @@ import {
   subagentStopPrompt,
 } from './features/conversation/subagent-monitor.ts'
 import {
+  hasRunningSubagents,
   parseSubagentBridgeSnapshot,
   subagentBridgeStatusKey,
   type SubagentBridgeSnapshot,
@@ -71,6 +72,7 @@ import { quotaProviderForModel } from './features/quotas/quota-display.ts'
 import { DirectoryPicker } from './features/workspace/DirectoryPicker.tsx'
 import {
   relatedAgentSession,
+  runningSubagentParentSessionPaths,
   sessionCounts,
   sidebarSessions,
   type PinnedSession,
@@ -378,7 +380,20 @@ function App() {
     onWorkspaceSelected: handleWorkspaceSelected,
   })
   selectedIdRef.current = selectedId
-  const tabCounts = sessionCounts(sessions, completedSessionIds)
+  const runningSubagentSessionPaths = useMemo(() => {
+    const paths = new Set(runningSubagentParentSessionPaths(recentSessions))
+    for (const session of sessions) {
+      const snapshot = subagentBridgeSnapshots[session.id]
+        ?? parseSubagentBridgeSnapshot(session.subagentBridgeStatus)
+      if (session.sessionPath && hasRunningSubagents(snapshot)) paths.add(session.sessionPath)
+    }
+    return paths
+  }, [recentSessions, sessions, subagentBridgeSnapshots])
+  const tabCounts = sessionCounts(
+    sessions,
+    completedSessionIds,
+    runningSubagentSessionPaths,
+  )
   useTabStatus(tabCounts.running, tabCounts.waiting, tabCounts.unread)
 
   const startAndSelectSession = useCallback(
@@ -1382,6 +1397,7 @@ function App() {
         pinnedSessions={pinnedSessions}
         recentSessions={recentSessions}
         recentWorkspacePaths={recentWorkspacePaths}
+        runningSubagentSessionPaths={runningSubagentSessionPaths}
         sentSessions={sentSessions}
         sessions={sessions}
         selectedId={selectedId}
