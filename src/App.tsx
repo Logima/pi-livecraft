@@ -935,10 +935,11 @@ function App() {
   useEffect(() => {
     if (
       !selectedSessionId || snapshotSessionId !== selectedSessionId || selectedRelayRunning
-      || !piStateIsIdle(snapshot.state)
+      || activity !== null || !piStateIsIdle(snapshot.state)
     ) return
     if (selectedSession?.status === 'running') updateSession(selectedSessionId, { status: 'idle' })
   }, [
+    activity,
     selectedRelayRunning,
     selectedSession?.status,
     selectedSessionId,
