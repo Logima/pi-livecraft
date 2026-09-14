@@ -36,27 +36,34 @@ export function sessionCounts(
   sessions: readonly SessionSummary[],
   completedSessionIds: ReadonlySet<string>,
   runningSubagentParentSessionPaths: ReadonlySet<string> = new Set(),
+  subagentSessionPaths: ReadonlySet<string> = new Set(),
 ): WorkspaceSessionCounts {
-  return sessions.filter((session) => !isSubagentSession(session)).reduce(
-    (counts, session) => {
-      const waiting = session.pendingUi.some(
-        (request) => isBlockingDialog(request) && !isAgentSelector(request),
-      )
-      return {
-        running: counts.running + Number(
-          (session.status === 'running'
-            || (session.sessionPath !== undefined
-              && runningSubagentParentSessionPaths.has(session.sessionPath)))
-            && !waiting,
-        ),
-        waiting: counts.waiting + Number(waiting),
-        unread: counts.unread + Number(
-          completedSessionIds.has(session.sessionPath ?? session.id),
-        ),
-      }
-    },
-    { running: 0, waiting: 0, unread: 0 },
-  )
+  return sessions
+    .filter((session) =>
+      !isSubagentSession(session)
+      && !subagentSessionPaths.has(session.id)
+      && !(session.sessionPath && subagentSessionPaths.has(session.sessionPath))
+    )
+    .reduce(
+      (counts, session) => {
+        const waiting = session.pendingUi.some(
+          (request) => isBlockingDialog(request) && !isAgentSelector(request),
+        )
+        return {
+          running: counts.running + Number(
+            (session.status === 'running'
+              || (session.sessionPath !== undefined
+                && runningSubagentParentSessionPaths.has(session.sessionPath)))
+              && !waiting,
+          ),
+          waiting: counts.waiting + Number(waiting),
+          unread: counts.unread + Number(
+            completedSessionIds.has(session.sessionPath ?? session.id),
+          ),
+        }
+      },
+      { running: 0, waiting: 0, unread: 0 },
+    )
 }
 
 /** Counts active, question-waiting, and finished-unread sessions belonging to one workspace. */
@@ -65,11 +72,13 @@ export function workspaceSessionCounts(
   workspacePath: string,
   completedSessionIds: ReadonlySet<string>,
   runningSubagentParentSessionPaths: ReadonlySet<string> = new Set(),
+  subagentSessionPaths: ReadonlySet<string> = new Set(),
 ): WorkspaceSessionCounts {
   return sessionCounts(
     sessions.filter((session) => session.cwd === workspacePath),
     completedSessionIds,
     runningSubagentParentSessionPaths,
+    subagentSessionPaths,
   )
 }
 
@@ -131,6 +140,7 @@ export function workspaceSidebarEntries(
   completedSessionIds: ReadonlySet<string>,
   pinnedSessions: readonly PinnedSession[] = [],
   runningSubagentSessionPaths: ReadonlySet<string> = new Set(),
+  subagentSessionPaths: ReadonlySet<string> = new Set(),
 ): WorkspaceSidebarEntry[] {
   const otherSessions = otherWorkspaceSessions(
     [...sessions],
@@ -139,6 +149,7 @@ export function workspaceSidebarEntries(
     completedSessionIds,
     new Set(pinnedSessions.map((session) => session.sessionPath)),
     runningSubagentSessionPaths,
+    subagentSessionPaths,
   )
   const otherPinnedSessions = otherWorkspacePinnedSessions(
     pinnedSessions,
@@ -309,12 +320,15 @@ export function otherWorkspaceSessions(
   completedSessionIds: ReadonlySet<string>,
   pinnedSessionPaths: ReadonlySet<string> = new Set(),
   runningSubagentSessionPaths: ReadonlySet<string> = new Set(),
+  subagentSessionPaths: ReadonlySet<string> = new Set(),
 ): SessionSummary[] {
   const relevant = sessions.flatMap((session) => {
     if (
       session.cwd === workspacePath
       || session.status === 'exited'
       || isSubagentSession(session)
+      || subagentSessionPaths.has(session.id)
+      || (session.sessionPath !== undefined && subagentSessionPaths.has(session.sessionPath))
     ) return []
     const indicator = session.sessionPath !== undefined
         && runningSubagentSessionPaths.has(session.sessionPath)

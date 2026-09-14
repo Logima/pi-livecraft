@@ -45,6 +45,7 @@ interface WorkspaceSidebarProps {
   recentSessions: RecentSession[]
   recentWorkspacePaths: string[]
   runningSubagentSessionPaths: ReadonlySet<string>
+  subagentSessionPaths: ReadonlySet<string>
   sentSessions: RecentSession[]
   sessions: SessionSummary[]
   selectedId: string
@@ -76,6 +77,7 @@ export function WorkspaceSidebar({
   recentSessions,
   recentWorkspacePaths,
   runningSubagentSessionPaths,
+  subagentSessionPaths,
   sentSessions,
   sessions,
   selectedId,
@@ -141,13 +143,16 @@ export function WorkspaceSidebar({
         completedSessionIds,
         pinnedSessions,
         runningSubagentSessionPaths,
+        subagentSessionPaths,
       ),
     [
       compactingSessionIds,
       completedSessionIds,
       pinnedSessions,
       recentWorkspacePaths,
+      runningSubagentSessionPaths,
       sessions,
+      subagentSessionPaths,
       workspacePath,
     ],
   )
@@ -594,6 +599,7 @@ export function WorkspaceSidebar({
               entry.path,
               completedSessionIds,
               runningSubagentSessionPaths,
+              subagentSessionPaths,
             )
             const activityId = `workspace-activity-${index}`
             return (
