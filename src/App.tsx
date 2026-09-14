@@ -356,6 +356,7 @@ function App() {
     pinnedSessions,
     recentSessions,
     recentWorkspacePaths,
+    subagentSessionPaths: recentSubagentSessionPaths,
     refreshSessions,
     removePendingRequest,
     renameManagedSession,
@@ -389,10 +390,8 @@ function App() {
     }
     return paths
   }, [recentSessions, sessions, subagentBridgeSnapshots])
-  const subagentSessionPaths = useMemo(() => {
-    const paths = new Set(
-      recentSessions.flatMap((session) => session.agentStatus ? [session.sessionPath] : []),
-    )
+  const allSubagentSessionPaths = useMemo(() => {
+    const paths = new Set(recentSubagentSessionPaths)
     for (const session of sessions) {
       const snapshot = subagentBridgeSnapshots[session.id]
         ?? parseSubagentBridgeSnapshot(session.subagentBridgeStatus)
@@ -401,12 +400,12 @@ function App() {
       }
     }
     return paths
-  }, [recentSessions, sessions, subagentBridgeSnapshots])
+  }, [recentSubagentSessionPaths, sessions, subagentBridgeSnapshots])
   const tabCounts = sessionCounts(
     sessions,
     completedSessionIds,
     runningSubagentSessionPaths,
-    subagentSessionPaths,
+    allSubagentSessionPaths,
   )
   useTabStatus(tabCounts.running, tabCounts.waiting, tabCounts.unread)
 
@@ -1412,7 +1411,7 @@ function App() {
         recentSessions={recentSessions}
         recentWorkspacePaths={recentWorkspacePaths}
         runningSubagentSessionPaths={runningSubagentSessionPaths}
-        subagentSessionPaths={subagentSessionPaths}
+        subagentSessionPaths={allSubagentSessionPaths}
         sentSessions={sentSessions}
         sessions={sessions}
         selectedId={selectedId}

@@ -46,6 +46,7 @@ export function useWorkspaceSessions(
 ) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([])
+  const [subagentSessionPaths, setSubagentSessionPaths] = useState<ReadonlySet<string>>(new Set())
   const [sentSessions, setSentSessions] = useState<RecentSession[]>([])
   const [unsentSessionIds, setUnsentSessionIds] = useState<ReadonlySet<string>>(new Set())
   const [completedSessionIds, setCompletedSessionIds] = useState<ReadonlySet<string>>(
@@ -200,6 +201,14 @@ export function useWorkspaceSessions(
         return next.size === current.size ? current : next
       })
       setRecentSessions(nextRecentSessions)
+      setSubagentSessionPaths(
+        new Set(
+          [nextRecentSessions, ...otherRecentSessions]
+            .flat()
+            .filter((session) => session.agentStatus !== undefined)
+            .map((session) => session.sessionPath),
+        ),
+      )
       setSentSessions((current) =>
         current.filter((sent) =>
           !nextRecentSessions.some((recent) =>
@@ -486,6 +495,7 @@ export function useWorkspaceSessions(
     pinnedSessions,
     recentSessions,
     recentWorkspacePaths,
+    subagentSessionPaths,
     refreshSessions,
     removePendingRequest,
     renameManagedSession,
