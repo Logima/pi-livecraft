@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   parseAskUserQuestionRequest,
   type AskUserQuestionRequest,
@@ -7,6 +7,7 @@ import type { JsonObject } from '../../../shared/types.ts'
 import { sendPiCommand } from '../../api.ts'
 import type { UiDialog } from './dialog-protocol.ts'
 import ReactMarkdown from 'react-markdown'
+import { SessionStatusIndicator } from '../workspace/SessionStatusIndicator.tsx'
 
 /** Strips Markdown syntax from a string while preserving visible text. */
 function stripMarkdown(text: string): string {
@@ -27,9 +28,18 @@ function stripMarkdown(text: string): string {
 
 /** Presents one question at a time, identifies its session, and keeps responses until batch-sent to Pi. */
 export function AskUserQuestionDialog(
-  { canMinimize, dialog, sessionName, onClose, onError, onOpenSession }: {
+  {
+    canMinimize,
+    dialog,
+    initiallyMinimized = false,
+    sessionName,
+    onClose,
+    onError,
+    onOpenSession,
+  }: {
     canMinimize: boolean
     dialog: UiDialog
+    initiallyMinimized?: boolean
     sessionName?: string
     onClose: () => void
     onError: (cause: unknown) => void
@@ -42,7 +52,10 @@ export function AskUserQuestionDialog(
   )
   const [freeText, setFreeText] = useState<string[]>(() => request.questions.map(() => ''))
   const [activeQuestion, setActiveQuestion] = useState(0)
-  const [minimized, setMinimized] = useState(false)
+  const [minimized, setMinimized] = useState(initiallyMinimized)
+  useEffect(() => {
+    if (!onOpenSession) setMinimized(false)
+  }, [onOpenSession])
   const question = request.questions[activeQuestion]
 
   const cleanHeader = stripMarkdown(question.header)
@@ -101,20 +114,23 @@ export function AskUserQuestionDialog(
     return (
       <button
         className='ask-user-question-minimized'
-        onClick={() => setMinimized(false)}
+        onClick={onOpenSession ?? (() => setMinimized(false))}
         type='button'
       >
-        <svg aria-hidden='true' width='14' height='14' viewBox='0 0 16 16' fill='none'>
-          <circle cx='8' cy='8' r='6.5' stroke='currentColor' strokeWidth='1.5' />
-          <path d='M6 8h4' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' />
-        </svg>
+        {onOpenSession && <SessionStatusIndicator label='Question waiting for your response' status='waiting' />}
+        {!onOpenSession && (
+          <svg aria-hidden='true' width='14' height='14' viewBox='0 0 16 16' fill='none'>
+            <circle cx='8' cy='8' r='6.5' stroke='currentColor' strokeWidth='1.5' />
+            <path d='M6 8h4' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' />
+          </svg>
+        )}
         <span>
           {sessionName
             ? `Question from “${sessionName}”`
             : `Question ${activeQuestion + 1} of ${request.questions.length}`}
         </span>
         <span>·</span>
-        <span>Show</span>
+        <span>{onOpenSession ? 'Open' : 'Show'}</span>
         <svg aria-hidden='true' width='14' height='14' viewBox='0 0 16 16' fill='none'>
           <path
             d='M6 10l4-4 4 4'
@@ -130,10 +146,7 @@ export function AskUserQuestionDialog(
 
   return (
     <div
-      className='ask-user-question-backdrop'
-      onClick={canMinimize
-        ? () => setMinimized(true)
-        : undefined}
+      className={canMinimize ? 'ask-user-question-inline' : 'ask-user-question-backdrop'}
     >
       <section
         aria-labelledby='ask-user-question-title'

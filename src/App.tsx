@@ -71,10 +71,12 @@ import { quotaProviderForModel } from './features/quotas/quota-display.ts'
 import { DirectoryPicker } from './features/workspace/DirectoryPicker.tsx'
 import {
   relatedAgentSession,
+  sessionCounts,
   sidebarSessions,
   type PinnedSession,
 } from './features/workspace/sidebar-sessions.ts'
 import { useWorkspaceSessions } from './features/workspace/useWorkspaceSessions.ts'
+import { useTabStatus } from './features/workspace/useTabStatus.ts'
 import { WorkspaceSidebar } from './features/workspace/WorkspaceSidebar.tsx'
 import {
   clampWorkspaceSidebarWidth,
@@ -376,6 +378,8 @@ function App() {
     onWorkspaceSelected: handleWorkspaceSelected,
   })
   selectedIdRef.current = selectedId
+  const tabCounts = sessionCounts(sessions, completedSessionIds)
+  useTabStatus(tabCounts.running, tabCounts.waiting, tabCounts.unread)
 
   const startAndSelectSession = useCallback(
     (
@@ -1104,7 +1108,6 @@ function App() {
     ? sessions.find((session) => session.id === questionnaire.sessionId)
     : undefined
   const questionnaireInComposer = questionnaire?.sessionId === selectedId
-    && snapshotSessionId === selectedId
   const openQuestionnaireSession = questionnaireSession && questionnaireSession.id !== selectedId
     ? () =>
       questionnaireSession.cwd === workspacePath
@@ -1478,18 +1481,20 @@ function App() {
                     </div>
                   </div>
                   <div className='composer-area'>
-                    {questionnaire && questionnaireInComposer && (
+                    {questionnaire && (
                       <AskUserQuestionDialog
                         canMinimize
                         dialog={questionnaire}
+                        initiallyMinimized={!questionnaireInComposer}
                         key={String(
                           questionnaire
                             .request
                             .id,
                         )}
-                        sessionName={selectedSession.name}
+                        sessionName={questionnaireSession?.name ?? selectedSession.name}
                         onClose={() => closeDialog(questionnaire)}
                         onError={(cause) => showToast('error', messageOf(cause))}
+                        onOpenSession={openQuestionnaireSession}
                       />
                     )}
                     <ToastStack onDismiss={dismissToast} toasts={visibleToasts} />
@@ -1648,21 +1653,6 @@ function App() {
           onClose={() => setDirectoryPickerOpen(false)}
           onError={(cause) => showToast('error', messageOf(cause))}
           onSelect={selectWorkspace}
-        />
-      )}
-      {questionnaire && !questionnaireInComposer && (
-        <AskUserQuestionDialog
-          canMinimize={false}
-          key={String(
-            questionnaire
-              .request
-              .id,
-          )}
-          dialog={questionnaire}
-          sessionName={questionnaireSession?.name}
-          onClose={() => closeDialog(questionnaire)}
-          onError={(cause) => showToast('error', messageOf(cause))}
-          onOpenSession={openQuestionnaireSession}
         />
       )}
       {dialog && !questionnaire && (

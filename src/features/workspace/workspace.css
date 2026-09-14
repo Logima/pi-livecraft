@@ -385,6 +385,9 @@
 .workspace-status-count.running {
   color: var(--accent);
 }
+.workspace-status-count.waiting {
+  color: var(--secondary);
+}
 .workspace-status-count.unread {
   color: var(--secondary);
 }

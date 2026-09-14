@@ -52,6 +52,7 @@ test('counts running and unread sessions for a workspace without delegated agent
       status: 'idle',
       pendingUi: [],
     },
+    { id: 'waiting', cwd: '/workspace', name: 'Waiting', status: 'running', pendingUi: [{ method: 'confirm' }] },
     { id: 'other', cwd: '/other', name: 'Other', status: 'running', pendingUi: [] },
   ]
 
@@ -61,7 +62,7 @@ test('counts running and unread sessions for a workspace without delegated agent
       '/workspace',
       new Set(['/sessions/finished.jsonl', '/sessions/agent.jsonl']),
     ),
-    { running: 1, unread: 1 },
+    { running: 1, waiting: 1, unread: 1 },
   )
 })
 

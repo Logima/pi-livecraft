@@ -607,6 +607,15 @@ export function WorkspaceSidebar({
                             {counts.running}
                           </span>
                         )}
+                        {counts.waiting > 0 && (
+                          <span className='workspace-status-count waiting'>
+                            <SessionStatusIndicator
+                              label='Sessions waiting for a response'
+                              status='waiting'
+                            />
+                            {counts.waiting}
+                          </span>
+                        )}
                         {counts.unread > 0 && (
                           <span className='workspace-status-count unread'>
                             <SessionStatusIndicator

@@ -1,5 +1,6 @@
 .ask-user-question, .composer {
   border: 1px solid var(--line);
+  border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
@@ -8,7 +9,17 @@
   width: min(1000px, calc(100% - 48px));
 }
 .ask-user-question {
-  width: min(900px, calc(100% - 48px));
+  width: min(1000px, calc(100% - 48px));
+  overflow: hidden;
+}
+.ask-user-question-inline {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 16px;
+}
+.ask-user-question-inline .ask-user-question {
+  width: min(1000px, 100%);
 }
 
 /* Overlay backdrop */
@@ -327,16 +338,19 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: min(900px, calc(100% - 48px));
+  width: min(1000px, calc(100% - 48px));
   margin: 0 auto 13px;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 9px 14px;
   background: var(--surface);
-  color: var(--accent);
+  color: var(--secondary);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+.ask-user-question-minimized .session-status-indicator.waiting {
+  color: inherit;
   transition:
     border-color 180ms ease,
     background 180ms ease,

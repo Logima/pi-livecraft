@@ -12,11 +12,9 @@ import { isObject } from '../../../shared/is-object.ts'
 import { promptSessionTitle } from '../composer/prompt-title.ts'
 import { recentWorkspaces } from './recent-workspaces.ts'
 import { readSessionIdFromUrl, urlForSession } from './session-url.ts'
-import { useTabStatus } from './useTabStatus.ts'
 import {
   nextActiveSessionId,
   pickSessionOnOpen,
-  isSubagentSession,
   sidebarSessions,
   type PinnedSession,
   type SessionActionTarget,
@@ -52,14 +50,6 @@ export function useWorkspaceSessions(
   const [unsentSessionIds, setUnsentSessionIds] = useState<ReadonlySet<string>>(new Set())
   const [completedSessionIds, setCompletedSessionIds] = useState<ReadonlySet<string>>(
     readCompletedSessionIds,
-  )
-  const completedSubagentCount = sessions.filter(
-    (session) => isSubagentSession(session)
-      && completedSessionIds.has(session.sessionPath ?? session.id),
-  ).length
-  useTabStatus(
-    sessions.filter((session) => session.status === 'running' && !isSubagentSession(session)).length,
-    completedSessionIds.size - completedSubagentCount,
   )
   const [pinnedSessions, setPinnedSessions] = useState<PinnedSession[]>(readPinnedSessions)
   const [isRefreshingSessions, setIsRefreshingSessions] = useState(true)

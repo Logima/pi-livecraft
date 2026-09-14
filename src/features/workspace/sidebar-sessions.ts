@@ -1,4 +1,5 @@
 import type { RecentSession, SessionSummary } from '../../../shared/types.ts'
+import { isAgentSelector, isBlockingDialog } from '../dialogs/dialog-protocol.ts'
 import { sessionIndicator } from './session-indicator.ts'
 
 export interface SessionActionTarget {
@@ -10,6 +11,7 @@ export interface SessionActionTarget {
 
 export interface WorkspaceSessionCounts {
   running: number
+  waiting: number
   unread: number
 }
 
@@ -29,23 +31,38 @@ export function isSubagentSession(
   return session.isSubagent === true || session.subagentRelation !== undefined
 }
 
-/** Counts active and finished-unread sessions belonging to one workspace. */
+/** Counts active, question-waiting, and finished-unread sessions. */
+export function sessionCounts(
+  sessions: readonly SessionSummary[],
+  completedSessionIds: ReadonlySet<string>,
+): WorkspaceSessionCounts {
+  return sessions.filter((session) => !isSubagentSession(session)).reduce(
+    (counts, session) => {
+      const waiting = session.pendingUi.some(
+        (request) => isBlockingDialog(request) && !isAgentSelector(request),
+      )
+      return {
+        running: counts.running + Number(session.status === 'running' && !waiting),
+        waiting: counts.waiting + Number(waiting),
+        unread: counts.unread + Number(
+          completedSessionIds.has(session.sessionPath ?? session.id),
+        ),
+      }
+    },
+    { running: 0, waiting: 0, unread: 0 },
+  )
+}
+
+/** Counts active, question-waiting, and finished-unread sessions belonging to one workspace. */
 export function workspaceSessionCounts(
   sessions: readonly SessionSummary[],
   workspacePath: string,
   completedSessionIds: ReadonlySet<string>,
 ): WorkspaceSessionCounts {
-  return sessions
-    .filter((session) => session.cwd === workspacePath && !isSubagentSession(session))
-    .reduce(
-      (counts, session) => ({
-        running: counts.running + Number(session.status === 'running'),
-        unread: counts.unread + Number(
-          completedSessionIds.has(session.sessionPath ?? session.id),
-        ),
-      }),
-      { running: 0, unread: 0 },
-    )
+  return sessionCounts(
+    sessions.filter((session) => session.cwd === workspacePath),
+    completedSessionIds,
+  )
 }
 
 export type PinnedSession = Pick<RecentSession, 'cwd' | 'name' | 'sessionPath'>
