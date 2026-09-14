@@ -64,7 +64,7 @@ test('les nouvelles commandes de productivité sont reconnues par le registre', 
 test('les nouveaux raccourcis par défaut sont définis', () => {
   assert.equal(defaultShortcuts['open-directory-picker'], 'alt+d')
   assert.equal(defaultShortcuts['workspace-previous'], 'alt+&')
-  assert.equal(defaultShortcuts['focus-composer'], 'alt+2')
+  assert.equal(defaultShortcuts['focus-composer'], undefined)
   assert.equal(defaultShortcuts['next-session'], 'alt+arrowright')
   assert.equal(defaultShortcuts['previous-session'], 'alt+arrowleft')
   assert.equal(defaultShortcuts['toggle-conversation-view'], undefined)

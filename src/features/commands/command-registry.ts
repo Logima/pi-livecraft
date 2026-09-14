@@ -62,7 +62,6 @@ export const defaultShortcuts: Partial<Record<CommandId, string>> = {
   'open-terminal': 'alt+t',
   'open-directory-picker': 'alt+d',
   'workspace-previous': 'alt+&',
-  'focus-composer': 'alt+2',
   'next-session': 'alt+arrowright',
   'previous-session': 'alt+arrowleft',
   'open-explorer': 'alt+o',
