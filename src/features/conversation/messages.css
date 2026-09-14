@@ -117,6 +117,11 @@
   overflow-wrap: anywhere;
   font: 14px/1.7 ui-sans-serif, system-ui, sans-serif;
 }
+.content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
 .content > :first-child, .reasoning > :first-child {
   margin-top: 0;
 }
